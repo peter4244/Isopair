@@ -1,0 +1,364 @@
+---
+title: "Isopair: Characterizing structural differences between isoform pairs"
+author: "Pete Castaldi"
+output:
+  BiocStyle::html_document:
+    toc: true
+    toc_depth: 3
+vignette: >
+  %\VignetteIndexEntry{Isopair: Characterizing structural differences between isoform pairs}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+eval_plot <- requireNamespace("ggplot2", quietly = TRUE)
+eval_meta <- requireNamespace("metafor", quietly = TRUE)
+```
+
+# Introduction
+
+How do two isoforms of the same gene differ structurally? **Isopair** answers
+this question by detecting, characterizing, and comparing structural differences
+between isoform pairs. The package identifies 12 types of splicing events
+(alternative TSS/TES, alternative 5'/3' splice sites, skipped exons, intron
+retention, and partial intron retention variants), reconstructs reference
+isoforms from detected events, and builds splicing choice profiles for
+downstream analysis.
+
+Use cases include NMD target characterization, alternative splicing surveys,
+and cross-condition comparisons of isoform structure. The workflow proceeds
+from event detection through profiling to single-set characterization and
+cross-set comparison.
+
+# Setup
+
+```{r library}
+library(Isopair)
+```
+
+Isopair ships with example data from 5 genes (SRSF3, SRSF1, BCL2L1, TP63,
+FAM13A) extracted from GENCODE v49. Three pre-computed objects are available:
+
+```{r load-data}
+data(example_structures)  # parsed isoform structures
+data(example_pairs)       # expression-derived pairs
+data(example_profiles)    # splicing choice profiles
+```
+
+The `example_structures` tibble contains `r nrow(example_structures)` isoforms.
+The `example_profiles` tibble contains `r nrow(example_profiles)` pair profiles
+with `r sum(example_profiles$n_events)` total events.
+
+# Core Workflow
+
+This section walks through the full pipeline from a GTF file to verified
+profiles.
+
+## Parse isoform structures
+
+```{r parse}
+gtf_path <- system.file("extdata", "example_small.gtf", package = "Isopair")
+structures <- parseIsoformStructures(gtf_path, verbose = FALSE)
+head(structures[, c("isoform_id", "gene_id", "n_exons")])
+```
+
+## Build union exons
+
+Union exons are atomic, non-overlapping segments that serve as a common
+coordinate system across all isoforms of a gene. Build them from **all
+isoforms** you plan to analyze:
+
+```{r union-exons}
+ue <- buildUnionExons(structures, verbose = FALSE)
+head(ue$union_exons)
+```
+
+## Generate pairs
+
+Load expression data and create isoform pairs. The expression CSV must be
+converted to a numeric matrix with isoform IDs as rownames:
+```{r pairs}
+expr_file <- system.file("extdata", "example_expression.csv",
+  package = "Isopair")
+expr_df <- read.csv(expr_file)
+expr_mat <- as.matrix(expr_df[, -1])
+rownames(expr_mat) <- expr_df$isoform_id
+
+gene_map <- unique(as.data.frame(structures[, c("isoform_id", "gene_id")]))
+pairs <- generatePairsExpression(expr_mat, gene_map,
+  colnames(expr_mat), method = "top_two")
+pairs
+```
+
+## Build profiles
+
+Profiles detect events for each pair, reconstruct the reference, and verify
+the reconstruction:
+
+```{r profiles}
+profiles <- buildProfiles(pairs, structures,
+  ue$union_exons, ue$isoform_union_mapping, verbose = FALSE)
+```
+
+## Verify reconstruction
+
+Every profile includes a reconstruction status. Check that all pairs pass:
+
+```{r verify}
+table(profiles$reconstruction_status)
+```
+
+## Summarize
+
+```{r summarize}
+summarizeProfiles(profiles)
+```
+
+# Understanding Events
+
+Isopair detects 12 event types organized in 4 categories:
+
+| Category | Event Types |
+|---|---|
+| Terminal | Alt_TSS, Alt_TES |
+| Boundary | A5SS, A3SS, Partial_IR_5, Partial_IR_3 |
+| Exon-level | SE, Missing_Internal |
+| Intron retention | IR, IR_diff_5, IR_diff_3, IR_diff_5_3 |
+
+**Direction semantics:** Events are described from the comparator's
+perspective. **LOSS** means the comparator lost sequence relative to the
+reference (the reference has more). **GAIN** means the comparator gained
+sequence (the reference has less).
+
+## Examining detailed events
+
+Each profile row contains a nested `detailed_events` tibble. Access it with
+base R:
+
+```{r detailed-events}
+profiles$detailed_events[[1]]
+```
+
+## Visualization
+
+```{r plot-pair, eval=eval_plot, fig.width=8, fig.height=4}
+# Get exon data for the first pair
+ref_id <- profiles$reference_isoform_id[1]
+comp_id <- profiles$comparator_isoform_id[1]
+ref_struct <- structures[structures$isoform_id == ref_id, ]
+comp_struct <- structures[structures$isoform_id == comp_id, ]
+
+ref_exons <- data.frame(
+  exon_start = ref_struct$exon_starts[[1]],
+  exon_end = ref_struct$exon_ends[[1]]
+)
+comp_exons <- data.frame(
+  exon_start = comp_struct$exon_starts[[1]],
+  exon_end = comp_struct$exon_ends[[1]]
+)
+
+events <- profiles$detailed_events[[1]]
+plotIsoformPair(ref_exons, comp_exons, events,
+  profiles$gene_id[1], ref_id, comp_id,
+  ref_struct$strand)
+```
+
+# Generating Pairs
+
+Isopair provides three methods for creating isoform pairs, each suited to
+different experimental designs.
+
+## Expression baseline
+
+Pair the two most highly expressed isoforms per gene:
+
+```{r pairs-expr}
+pairs_expr <- generatePairsExpression(expr_mat, gene_map,
+  colnames(expr_mat), method = "top_two")
+nrow(pairs_expr)
+```
+
+## Differential expression
+
+First identify dominant isoforms, then pair each significant DE isoform
+against its gene's dominant:
+
+```{r pairs-de}
+de_file <- system.file("extdata", "example_de.csv", package = "Isopair")
+de <- read.csv(de_file)
+dom <- identifyDominantIsoforms(expr_mat, gene_map, colnames(expr_mat))
+pairs_de <- generatePairsDE(de, "isoform_id", "gene_id", "logFC",
+  "adj_p_val", dom)
+nrow(pairs_de)
+```
+
+## Differential usage
+
+Pair isoforms based on differential usage results:
+
+```{r pairs-du}
+du_file <- system.file("extdata", "example_du.csv", package = "Isopair")
+du <- read.csv(du_file)
+pairs_du <- generatePairsDU(du, "isoform_id", "gene_id", "dPSI",
+  "adj_p_val", method = "extreme")
+nrow(pairs_du)
+```
+
+# Characterizing a Pair Set
+
+This section demonstrates single-set characterization using the pre-computed
+`example_profiles`.
+
+## Event quantification
+
+```{r summary}
+summarizeProfiles(example_profiles)
+```
+
+## Co-occurrence
+
+Test whether event types co-occur more or less often than expected:
+
+```{r cooccurrence}
+cooc <- testCooccurrence(example_profiles)
+cooc[, c("event_a", "event_b", "odds_ratio", "p_value")]
+```
+
+With only `r nrow(example_profiles)` profiles, most tests lack power. In real
+analyses with hundreds of pairs, significant co-occurrence patterns emerge.
+
+## Spatial analysis
+
+Test whether events are uniformly distributed along the gene span. We lower
+`min_events` for illustration; use the default (30) for real analyses:
+
+```{r positional-bias}
+bias <- testPositionalBias(example_profiles, example_structures,
+  min_events = 1L)
+bias[, c("event_type", "n_events", "median_position", "bias_direction")]
+```
+
+### Topology classification
+
+Classify A5SS/A3SS event pairs into Face-to-Face, Back-to-Back, or Distal
+topologies:
+
+```{r topology}
+topo <- classifyTopology(example_profiles, example_structures, test = FALSE)
+topo$summary
+```
+
+### Event proximity
+
+Test whether internal events cluster closer than expected by chance:
+
+```{r proximity}
+prox <- testProximity(example_profiles, example_structures, n_perm = 50L)
+prox[c("z_score", "p_value", "n_profiles_used")]
+```
+
+## Regional impact
+
+Map events to genomic regions (5'UTR, CDS, 3'UTR) and test for enrichment:
+
+```{r regional}
+cds <- extractCdsAnnotations(gtf_path, structures$isoform_id, verbose = FALSE)
+annotated <- annotateRegionTypes(ue$isoform_union_mapping, cds)
+er <- mapEventsToRegions(example_profiles, annotated, cds)
+head(er[, c("event_type", "region_type")])
+```
+
+```{r enrichment}
+enrich <- testRegionalEnrichment(er, annotated, example_profiles)
+enrich[, c("event_type", "region_type", "observed_prop", "expected_prop",
+  "direction_enrich")]
+```
+
+## PTC analysis
+
+Compute premature termination codon status and test for association between
+pair members:
+
+```{r ptc}
+ptc <- computePtcStatus(structures, cds)
+head(ptc[, c("isoform_id", "has_ptc", "ptc_distance")])
+```
+
+```{r ptc-assoc}
+assoc <- testPtcAssociation(ptc, example_pairs)
+assoc$ref_ptc_rate
+assoc$comp_ptc_rate
+```
+
+# Comparing Two Pair Sets
+
+The `comparePairSets()` function runs 10 statistical tests comparing two
+profile sets. Each test section is self-documenting: the result includes the
+test description, method, p-value, and the exact data that entered the test.
+
+```{r compare-build}
+# Build profiles from two different pair methods
+profiles_expr <- buildProfiles(pairs_expr, structures,
+  ue$union_exons, ue$isoform_union_mapping, verbose = FALSE)
+
+# Use DE pairs (if any exist)
+if (nrow(pairs_de) > 0) {
+  # Filter to isoforms present in structures
+  valid <- pairs_de$reference_isoform_id %in% structures$isoform_id &
+    pairs_de$comparator_isoform_id %in% structures$isoform_id
+  pairs_de_valid <- pairs_de[valid, ]
+  if (nrow(pairs_de_valid) > 0) {
+    profiles_de <- buildProfiles(pairs_de_valid, structures,
+      ue$union_exons, ue$isoform_union_mapping, verbose = FALSE)
+  } else {
+    profiles_de <- profiles_expr
+  }
+} else {
+  profiles_de <- profiles_expr
+}
+```
+
+```{r compare}
+result <- comparePairSets(profiles_expr, profiles_de,
+  min_overlap = 2L, verbose = FALSE)
+names(result)
+```
+
+Inspect a specific section:
+
+```{r compare-detail}
+result$event_count[c("description", "test", "p_value", "cliffs_d")]
+```
+
+Skipped sections indicate when optional inputs were not provided:
+
+```{r compare-skipped}
+result$topology
+```
+
+# Meta-Analysis
+
+```{r meta, eval=eval_meta}
+# Pool results across multiple comparisons using random-effects meta-analysis
+comp1 <- comparePairSets(profiles_expr, profiles_de,
+  min_overlap = 2L, verbose = FALSE)
+comp2 <- comparePairSets(profiles_expr, profiles_de,
+  min_overlap = 2L, verbose = FALSE)
+meta <- metaAnalyzePairSets(list(set1 = comp1, set2 = comp2), verbose = FALSE)
+names(meta)
+```
+
+The `metaAnalyzePairSets()` function requires the **metafor** package and at
+least 2 comparisons. Each test section is meta-analyzed independently using
+random-effects models.
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```

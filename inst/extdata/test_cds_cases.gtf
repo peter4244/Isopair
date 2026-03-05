@@ -1,0 +1,296 @@
+##description: Synthetic CDS test cases for Isopair Phase 3
+##provider: Isopair test suite
+## Group A: Region classification (+ strand)
+## Group C: PTC distances (+ strand)
+## Group D: Frame disruption (+ strand)
+## Group F: Minus strand mirrors
+## Group G: Edge cases
+##
+## ========================================================================
+## GROUP A: Region classification (+ strand)
+## ========================================================================
+##
+## GENE_CDS_A1: 3-exon, CDS spans all 3 exons fully
+## Exon1: 1000-1200, Exon2: 1500-1800, Exon3: 2100-2400
+## CDS: 1000-2400 (all exonic bases are CDS)
+## Expected: all union exon segments → "CDS"
+chrT	test	gene	1000	2400	.	+	.	gene_id "GENE_CDS_A1"; gene_name "CDS_A1";
+chrT	test	transcript	1000	2400	.	+	.	gene_id "GENE_CDS_A1"; transcript_id "TX_A1_1"; gene_name "CDS_A1";
+chrT	test	exon	1000	1200	.	+	.	gene_id "GENE_CDS_A1"; transcript_id "TX_A1_1"; exon_number "1";
+chrT	test	exon	1500	1800	.	+	.	gene_id "GENE_CDS_A1"; transcript_id "TX_A1_1"; exon_number "2";
+chrT	test	exon	2100	2400	.	+	.	gene_id "GENE_CDS_A1"; transcript_id "TX_A1_1"; exon_number "3";
+chrT	test	CDS	1000	1200	.	+	0	gene_id "GENE_CDS_A1"; transcript_id "TX_A1_1"; exon_number "1";
+chrT	test	CDS	1500	1800	.	+	0	gene_id "GENE_CDS_A1"; transcript_id "TX_A1_1"; exon_number "2";
+chrT	test	CDS	2100	2400	.	+	0	gene_id "GENE_CDS_A1"; transcript_id "TX_A1_1"; exon_number "3";
+chrT	test	start_codon	1000	1002	.	+	0	gene_id "GENE_CDS_A1"; transcript_id "TX_A1_1";
+chrT	test	stop_codon	2398	2400	.	+	0	gene_id "GENE_CDS_A1"; transcript_id "TX_A1_1";
+##
+## GENE_CDS_A2: 3-exon, CDS only in exon 2
+## Exon1: 3000-3200 (5'UTR), Exon2: 3500-3800 (contains_orf_start_stop), Exon3: 4100-4300 (3'UTR)
+## CDS: 3550-3750
+chrT	test	gene	3000	4300	.	+	.	gene_id "GENE_CDS_A2"; gene_name "CDS_A2";
+chrT	test	transcript	3000	4300	.	+	.	gene_id "GENE_CDS_A2"; transcript_id "TX_A2_1"; gene_name "CDS_A2";
+chrT	test	exon	3000	3200	.	+	.	gene_id "GENE_CDS_A2"; transcript_id "TX_A2_1"; exon_number "1";
+chrT	test	exon	3500	3800	.	+	.	gene_id "GENE_CDS_A2"; transcript_id "TX_A2_1"; exon_number "2";
+chrT	test	exon	4100	4300	.	+	.	gene_id "GENE_CDS_A2"; transcript_id "TX_A2_1"; exon_number "3";
+chrT	test	CDS	3550	3750	.	+	0	gene_id "GENE_CDS_A2"; transcript_id "TX_A2_1"; exon_number "2";
+chrT	test	start_codon	3550	3552	.	+	0	gene_id "GENE_CDS_A2"; transcript_id "TX_A2_1";
+chrT	test	stop_codon	3748	3750	.	+	0	gene_id "GENE_CDS_A2"; transcript_id "TX_A2_1";
+##
+## GENE_CDS_A3: 3-exon, CDS starts mid-exon1, ends mid-exon3
+## Exon1: 5000-5300, Exon2: 5600-5900, Exon3: 6200-6500
+## CDS: 5100-6350
+## Exon1: contains_orf_start (5000-5300 spans 5100)
+## Exon2: CDS (entirely within 5100-6350)
+## Exon3: contains_orf_stop (6200-6500 spans 6350)
+chrT	test	gene	5000	6500	.	+	.	gene_id "GENE_CDS_A3"; gene_name "CDS_A3";
+chrT	test	transcript	5000	6500	.	+	.	gene_id "GENE_CDS_A3"; transcript_id "TX_A3_1"; gene_name "CDS_A3";
+chrT	test	exon	5000	5300	.	+	.	gene_id "GENE_CDS_A3"; transcript_id "TX_A3_1"; exon_number "1";
+chrT	test	exon	5600	5900	.	+	.	gene_id "GENE_CDS_A3"; transcript_id "TX_A3_1"; exon_number "2";
+chrT	test	exon	6200	6500	.	+	.	gene_id "GENE_CDS_A3"; transcript_id "TX_A3_1"; exon_number "3";
+chrT	test	CDS	5100	5300	.	+	0	gene_id "GENE_CDS_A3"; transcript_id "TX_A3_1"; exon_number "1";
+chrT	test	CDS	5600	5900	.	+	0	gene_id "GENE_CDS_A3"; transcript_id "TX_A3_1"; exon_number "2";
+chrT	test	CDS	6200	6350	.	+	0	gene_id "GENE_CDS_A3"; transcript_id "TX_A3_1"; exon_number "3";
+chrT	test	start_codon	5100	5102	.	+	0	gene_id "GENE_CDS_A3"; transcript_id "TX_A3_1";
+chrT	test	stop_codon	6348	6350	.	+	0	gene_id "GENE_CDS_A3"; transcript_id "TX_A3_1";
+##
+## GENE_CDS_A4: 1-exon, CDS within single exon
+## Exon1: 7000-7600
+## CDS: 7100-7500 → contains_orf_start_stop
+chrT	test	gene	7000	7600	.	+	.	gene_id "GENE_CDS_A4"; gene_name "CDS_A4";
+chrT	test	transcript	7000	7600	.	+	.	gene_id "GENE_CDS_A4"; transcript_id "TX_A4_1"; gene_name "CDS_A4";
+chrT	test	exon	7000	7600	.	+	.	gene_id "GENE_CDS_A4"; transcript_id "TX_A4_1"; exon_number "1";
+chrT	test	CDS	7100	7500	.	+	0	gene_id "GENE_CDS_A4"; transcript_id "TX_A4_1"; exon_number "1";
+chrT	test	start_codon	7100	7102	.	+	0	gene_id "GENE_CDS_A4"; transcript_id "TX_A4_1";
+chrT	test	stop_codon	7498	7500	.	+	0	gene_id "GENE_CDS_A4"; transcript_id "TX_A4_1";
+##
+## ========================================================================
+## GROUP C: PTC distances (+ strand)
+## ========================================================================
+##
+## GENE_PTC_C1: 3-exon, stop 100nt before last EJC → has_ptc=TRUE
+## Exon1: 10000-10300 (301bp), Exon2: 10600-10900 (301bp), Exon3: 11200-11500 (301bp)
+## Total mRNA = 903bp. Last EJC at mRNA pos 602 (301+301).
+## Stop at mRNA pos 502 → ptc_distance = 602-502 = 100
+## For + strand, stop_pos = cds_stop. Exon2 start = 10600, offset = stop_pos - 10600
+## mRNA pos = 301 + offset. We need 301 + offset = 502, so offset = 201
+## stop_pos = 10600 + 201 = 10801
+## CDS: 10000-10801
+chrT	test	gene	10000	11500	.	+	.	gene_id "GENE_PTC_C1"; gene_name "PTC_C1";
+chrT	test	transcript	10000	11500	.	+	.	gene_id "GENE_PTC_C1"; transcript_id "TX_C1_1"; gene_name "PTC_C1";
+chrT	test	exon	10000	10300	.	+	.	gene_id "GENE_PTC_C1"; transcript_id "TX_C1_1"; exon_number "1";
+chrT	test	exon	10600	10900	.	+	.	gene_id "GENE_PTC_C1"; transcript_id "TX_C1_1"; exon_number "2";
+chrT	test	exon	11200	11500	.	+	.	gene_id "GENE_PTC_C1"; transcript_id "TX_C1_1"; exon_number "3";
+chrT	test	CDS	10000	10300	.	+	0	gene_id "GENE_PTC_C1"; transcript_id "TX_C1_1"; exon_number "1";
+chrT	test	CDS	10600	10801	.	+	0	gene_id "GENE_PTC_C1"; transcript_id "TX_C1_1"; exon_number "2";
+chrT	test	start_codon	10000	10002	.	+	0	gene_id "GENE_PTC_C1"; transcript_id "TX_C1_1";
+chrT	test	stop_codon	10799	10801	.	+	0	gene_id "GENE_PTC_C1"; transcript_id "TX_C1_1";
+##
+## GENE_PTC_C2: 3-exon, stop 30nt before last EJC → has_ptc=FALSE
+## Same exon structure as C1. Last EJC at mRNA 602.
+## Stop at mRNA 572 → ptc_distance = 602-572 = 30
+## offset = 572-301 = 271, stop_pos = 10600+271 = 10871
+## CDS: 10000-10871
+chrT	test	gene	13000	14500	.	+	.	gene_id "GENE_PTC_C2"; gene_name "PTC_C2";
+chrT	test	transcript	13000	14500	.	+	.	gene_id "GENE_PTC_C2"; transcript_id "TX_C2_1"; gene_name "PTC_C2";
+chrT	test	exon	13000	13300	.	+	.	gene_id "GENE_PTC_C2"; transcript_id "TX_C2_1"; exon_number "1";
+chrT	test	exon	13600	13900	.	+	.	gene_id "GENE_PTC_C2"; transcript_id "TX_C2_1"; exon_number "2";
+chrT	test	exon	14200	14500	.	+	.	gene_id "GENE_PTC_C2"; transcript_id "TX_C2_1"; exon_number "3";
+chrT	test	CDS	13000	13300	.	+	0	gene_id "GENE_PTC_C2"; transcript_id "TX_C2_1"; exon_number "1";
+chrT	test	CDS	13600	13871	.	+	0	gene_id "GENE_PTC_C2"; transcript_id "TX_C2_1"; exon_number "2";
+chrT	test	start_codon	13000	13002	.	+	0	gene_id "GENE_PTC_C2"; transcript_id "TX_C2_1";
+chrT	test	stop_codon	13869	13871	.	+	0	gene_id "GENE_PTC_C2"; transcript_id "TX_C2_1";
+##
+## GENE_PTC_C3: 3-exon, stop in last exon → stop_in_last_exon=TRUE, has_ptc=FALSE
+## Exon1: 16000-16300 (301bp), Exon2: 16600-16900 (301bp), Exon3: 17200-17500 (301bp)
+## CDS extends into last exon. Stop in exon 3 at 17300.
+## Last EJC at mRNA 602. Stop at mRNA = 301+301+(17300-17200) = 702 → ptc_distance = 602-702 = -100
+chrT	test	gene	16000	17500	.	+	.	gene_id "GENE_PTC_C3"; gene_name "PTC_C3";
+chrT	test	transcript	16000	17500	.	+	.	gene_id "GENE_PTC_C3"; transcript_id "TX_C3_1"; gene_name "PTC_C3";
+chrT	test	exon	16000	16300	.	+	.	gene_id "GENE_PTC_C3"; transcript_id "TX_C3_1"; exon_number "1";
+chrT	test	exon	16600	16900	.	+	.	gene_id "GENE_PTC_C3"; transcript_id "TX_C3_1"; exon_number "2";
+chrT	test	exon	17200	17500	.	+	.	gene_id "GENE_PTC_C3"; transcript_id "TX_C3_1"; exon_number "3";
+chrT	test	CDS	16000	16300	.	+	0	gene_id "GENE_PTC_C3"; transcript_id "TX_C3_1"; exon_number "1";
+chrT	test	CDS	16600	16900	.	+	0	gene_id "GENE_PTC_C3"; transcript_id "TX_C3_1"; exon_number "2";
+chrT	test	CDS	17200	17300	.	+	0	gene_id "GENE_PTC_C3"; transcript_id "TX_C3_1"; exon_number "3";
+chrT	test	start_codon	16000	16002	.	+	0	gene_id "GENE_PTC_C3"; transcript_id "TX_C3_1";
+chrT	test	stop_codon	17298	17300	.	+	0	gene_id "GENE_PTC_C3"; transcript_id "TX_C3_1";
+##
+## GENE_PTC_C4: 1-exon, coding → single-exon, has_ptc=FALSE
+## Exon1: 19000-19600
+## CDS: 19100-19500
+chrT	test	gene	19000	19600	.	+	.	gene_id "GENE_PTC_C4"; gene_name "PTC_C4";
+chrT	test	transcript	19000	19600	.	+	.	gene_id "GENE_PTC_C4"; transcript_id "TX_C4_1"; gene_name "PTC_C4";
+chrT	test	exon	19000	19600	.	+	.	gene_id "GENE_PTC_C4"; transcript_id "TX_C4_1"; exon_number "1";
+chrT	test	CDS	19100	19500	.	+	0	gene_id "GENE_PTC_C4"; transcript_id "TX_C4_1"; exon_number "1";
+chrT	test	start_codon	19100	19102	.	+	0	gene_id "GENE_PTC_C4"; transcript_id "TX_C4_1";
+chrT	test	stop_codon	19498	19500	.	+	0	gene_id "GENE_PTC_C4"; transcript_id "TX_C4_1";
+##
+## ========================================================================
+## GROUP D: Frame disruption (+ strand)
+## ========================================================================
+##
+## GENE_FD_D1: SE event, 90bp CDS overlap (90%%3=0) → frame_disrupting=FALSE
+## Reference TX_D1_ref: 3 exons (has the SE)
+## Comparator TX_D1_comp: 2 exons (skips exon 2)
+## Exon1: 22000-22200, Exon2: 22400-22489 (90bp), Exon3: 22700-22900
+## CDS: 22000-22900 (all CDS)
+## SE event on exon2: 90bp overlap with CDS, 90%%3=0 → NOT frame-disrupting
+chrT	test	gene	22000	22900	.	+	.	gene_id "GENE_FD_D1"; gene_name "FD_D1";
+chrT	test	transcript	22000	22900	.	+	.	gene_id "GENE_FD_D1"; transcript_id "TX_D1_ref"; gene_name "FD_D1";
+chrT	test	exon	22000	22200	.	+	.	gene_id "GENE_FD_D1"; transcript_id "TX_D1_ref"; exon_number "1";
+chrT	test	exon	22400	22489	.	+	.	gene_id "GENE_FD_D1"; transcript_id "TX_D1_ref"; exon_number "2";
+chrT	test	exon	22700	22900	.	+	.	gene_id "GENE_FD_D1"; transcript_id "TX_D1_ref"; exon_number "3";
+chrT	test	CDS	22000	22200	.	+	0	gene_id "GENE_FD_D1"; transcript_id "TX_D1_ref"; exon_number "1";
+chrT	test	CDS	22400	22489	.	+	0	gene_id "GENE_FD_D1"; transcript_id "TX_D1_ref"; exon_number "2";
+chrT	test	CDS	22700	22900	.	+	0	gene_id "GENE_FD_D1"; transcript_id "TX_D1_ref"; exon_number "3";
+chrT	test	start_codon	22000	22002	.	+	0	gene_id "GENE_FD_D1"; transcript_id "TX_D1_ref";
+chrT	test	stop_codon	22898	22900	.	+	0	gene_id "GENE_FD_D1"; transcript_id "TX_D1_ref";
+chrT	test	transcript	22000	22900	.	+	.	gene_id "GENE_FD_D1"; transcript_id "TX_D1_comp"; gene_name "FD_D1";
+chrT	test	exon	22000	22200	.	+	.	gene_id "GENE_FD_D1"; transcript_id "TX_D1_comp"; exon_number "1";
+chrT	test	exon	22700	22900	.	+	.	gene_id "GENE_FD_D1"; transcript_id "TX_D1_comp"; exon_number "2";
+chrT	test	CDS	22000	22200	.	+	0	gene_id "GENE_FD_D1"; transcript_id "TX_D1_comp"; exon_number "1";
+chrT	test	CDS	22700	22900	.	+	0	gene_id "GENE_FD_D1"; transcript_id "TX_D1_comp"; exon_number "2";
+chrT	test	start_codon	22000	22002	.	+	0	gene_id "GENE_FD_D1"; transcript_id "TX_D1_comp";
+chrT	test	stop_codon	22898	22900	.	+	0	gene_id "GENE_FD_D1"; transcript_id "TX_D1_comp";
+##
+## GENE_FD_D2: SE event, 91bp CDS overlap (91%%3=1) → frame_disrupting=TRUE
+## Reference TX_D2_ref: 3 exons (has the SE)
+## Comparator TX_D2_comp: 2 exons (skips exon 2)
+## Exon1: 25000-25200, Exon2: 25400-25490 (91bp), Exon3: 25700-25900
+## CDS: 25000-25900 (all CDS)
+## SE event on exon2: 91bp overlap with CDS, 91%%3=1 → frame-disrupting
+chrT	test	gene	25000	25900	.	+	.	gene_id "GENE_FD_D2"; gene_name "FD_D2";
+chrT	test	transcript	25000	25900	.	+	.	gene_id "GENE_FD_D2"; transcript_id "TX_D2_ref"; gene_name "FD_D2";
+chrT	test	exon	25000	25200	.	+	.	gene_id "GENE_FD_D2"; transcript_id "TX_D2_ref"; exon_number "1";
+chrT	test	exon	25400	25490	.	+	.	gene_id "GENE_FD_D2"; transcript_id "TX_D2_ref"; exon_number "2";
+chrT	test	exon	25700	25900	.	+	.	gene_id "GENE_FD_D2"; transcript_id "TX_D2_ref"; exon_number "3";
+chrT	test	CDS	25000	25200	.	+	0	gene_id "GENE_FD_D2"; transcript_id "TX_D2_ref"; exon_number "1";
+chrT	test	CDS	25400	25490	.	+	0	gene_id "GENE_FD_D2"; transcript_id "TX_D2_ref"; exon_number "2";
+chrT	test	CDS	25700	25900	.	+	0	gene_id "GENE_FD_D2"; transcript_id "TX_D2_ref"; exon_number "3";
+chrT	test	start_codon	25000	25002	.	+	0	gene_id "GENE_FD_D2"; transcript_id "TX_D2_ref";
+chrT	test	stop_codon	25898	25900	.	+	0	gene_id "GENE_FD_D2"; transcript_id "TX_D2_ref";
+chrT	test	transcript	25000	25900	.	+	.	gene_id "GENE_FD_D2"; transcript_id "TX_D2_comp"; gene_name "FD_D2";
+chrT	test	exon	25000	25200	.	+	.	gene_id "GENE_FD_D2"; transcript_id "TX_D2_comp"; exon_number "1";
+chrT	test	exon	25700	25900	.	+	.	gene_id "GENE_FD_D2"; transcript_id "TX_D2_comp"; exon_number "2";
+chrT	test	CDS	25000	25200	.	+	0	gene_id "GENE_FD_D2"; transcript_id "TX_D2_comp"; exon_number "1";
+chrT	test	CDS	25700	25900	.	+	0	gene_id "GENE_FD_D2"; transcript_id "TX_D2_comp"; exon_number "2";
+chrT	test	start_codon	25000	25002	.	+	0	gene_id "GENE_FD_D2"; transcript_id "TX_D2_comp";
+chrT	test	stop_codon	25898	25900	.	+	0	gene_id "GENE_FD_D2"; transcript_id "TX_D2_comp";
+##
+## GENE_FD_D3: A5SS event, 7bp CDS overlap (7%%3=1) → frame_disrupting=TRUE
+## Reference TX_D3_ref: 2 exons, exon1 ends at 28207
+## Comparator TX_D3_comp: 2 exons, exon1 ends at 28200 (A5SS, 7bp diff)
+## CDS: 28000-28500 (all CDS)
+## A5SS event covers 28201-28207, all within CDS, 7bp overlap, 7%%3=1
+chrT	test	gene	28000	28500	.	+	.	gene_id "GENE_FD_D3"; gene_name "FD_D3";
+chrT	test	transcript	28000	28500	.	+	.	gene_id "GENE_FD_D3"; transcript_id "TX_D3_ref"; gene_name "FD_D3";
+chrT	test	exon	28000	28207	.	+	.	gene_id "GENE_FD_D3"; transcript_id "TX_D3_ref"; exon_number "1";
+chrT	test	exon	28400	28500	.	+	.	gene_id "GENE_FD_D3"; transcript_id "TX_D3_ref"; exon_number "2";
+chrT	test	CDS	28000	28207	.	+	0	gene_id "GENE_FD_D3"; transcript_id "TX_D3_ref"; exon_number "1";
+chrT	test	CDS	28400	28500	.	+	0	gene_id "GENE_FD_D3"; transcript_id "TX_D3_ref"; exon_number "2";
+chrT	test	start_codon	28000	28002	.	+	0	gene_id "GENE_FD_D3"; transcript_id "TX_D3_ref";
+chrT	test	stop_codon	28498	28500	.	+	0	gene_id "GENE_FD_D3"; transcript_id "TX_D3_ref";
+chrT	test	transcript	28000	28500	.	+	.	gene_id "GENE_FD_D3"; transcript_id "TX_D3_comp"; gene_name "FD_D3";
+chrT	test	exon	28000	28200	.	+	.	gene_id "GENE_FD_D3"; transcript_id "TX_D3_comp"; exon_number "1";
+chrT	test	exon	28400	28500	.	+	.	gene_id "GENE_FD_D3"; transcript_id "TX_D3_comp"; exon_number "2";
+chrT	test	CDS	28000	28200	.	+	0	gene_id "GENE_FD_D3"; transcript_id "TX_D3_comp"; exon_number "1";
+chrT	test	CDS	28400	28500	.	+	0	gene_id "GENE_FD_D3"; transcript_id "TX_D3_comp"; exon_number "2";
+chrT	test	start_codon	28000	28002	.	+	0	gene_id "GENE_FD_D3"; transcript_id "TX_D3_comp";
+chrT	test	stop_codon	28498	28500	.	+	0	gene_id "GENE_FD_D3"; transcript_id "TX_D3_comp";
+##
+## ========================================================================
+## GROUP F: Minus strand mirrors
+## ========================================================================
+##
+## GENE_CDS_F1: Mirror of A3 on - strand
+## Exon1: 31000-31300, Exon2: 31600-31900, Exon3: 32200-32500
+## On - strand: 5'→3' = descending genomic (exon3→exon2→exon1)
+## CDS: 31100-32350
+## Exon3 (first bio): contains_orf_start (31100 not within 32200-32500, but cds_start is in exon1)
+## Wait, for - strand: biological stop = cds_start (lower coord), biological start = cds_stop (higher coord)
+## So: cds_start=31100, cds_stop=32350
+## Exon3 (32200-32500): spans cds_stop=32350 → contains_orf_start (bio start on - strand)
+## Exon2 (31600-31900): entirely within 31100-32350 → CDS
+## Exon1 (31000-31300): spans cds_start=31100 → contains_orf_stop (bio stop on - strand)
+## But region classification is strand-independent per the pipeline (uses genomic coords)
+## The label "contains_orf_start" = spans cds_start, "contains_orf_stop" = spans cds_stop
+chrT	test	gene	31000	32500	.	-	.	gene_id "GENE_CDS_F1"; gene_name "CDS_F1";
+chrT	test	transcript	31000	32500	.	-	.	gene_id "GENE_CDS_F1"; transcript_id "TX_F1_1"; gene_name "CDS_F1";
+chrT	test	exon	31000	31300	.	-	.	gene_id "GENE_CDS_F1"; transcript_id "TX_F1_1"; exon_number "3";
+chrT	test	exon	31600	31900	.	-	.	gene_id "GENE_CDS_F1"; transcript_id "TX_F1_1"; exon_number "2";
+chrT	test	exon	32200	32500	.	-	.	gene_id "GENE_CDS_F1"; transcript_id "TX_F1_1"; exon_number "1";
+chrT	test	CDS	31100	31300	.	-	0	gene_id "GENE_CDS_F1"; transcript_id "TX_F1_1"; exon_number "3";
+chrT	test	CDS	31600	31900	.	-	0	gene_id "GENE_CDS_F1"; transcript_id "TX_F1_1"; exon_number "2";
+chrT	test	CDS	32200	32350	.	-	0	gene_id "GENE_CDS_F1"; transcript_id "TX_F1_1"; exon_number "1";
+chrT	test	start_codon	32348	32350	.	-	0	gene_id "GENE_CDS_F1"; transcript_id "TX_F1_1";
+chrT	test	stop_codon	31100	31102	.	-	0	gene_id "GENE_CDS_F1"; transcript_id "TX_F1_1";
+##
+## GENE_PTC_F2: Mirror of C1 on - strand (PTC distance=100, has_ptc=TRUE)
+## Exon1: 35000-35300 (301bp), Exon2: 35600-35900 (301bp), Exon3: 36200-36500 (301bp)
+## On - strand: bio order is exon3(first), exon2, exon1(last)
+## Last EJC in mRNA = sum of first two bio exons = 301+301 = 602
+## Stop at mRNA 502 → ptc_distance = 100
+## Bio stop = cds_start (lower coord on - strand)
+## Bio order: exon3(36200-36500), exon2(35600-35900), exon1(35000-35300)
+## Stop in exon2: offset = e_ends[exon2_idx] - stop_pos = 35900 - stop_pos
+## mRNA = 301 + offset. Need 301+offset=502, offset=201, stop_pos = 35900-201 = 35699
+## CDS: cds_start = 35699 (bio stop), cds_stop = 36500 (bio start)
+chrT	test	gene	35000	36500	.	-	.	gene_id "GENE_PTC_F2"; gene_name "PTC_F2";
+chrT	test	transcript	35000	36500	.	-	.	gene_id "GENE_PTC_F2"; transcript_id "TX_F2_1"; gene_name "PTC_F2";
+chrT	test	exon	35000	35300	.	-	.	gene_id "GENE_PTC_F2"; transcript_id "TX_F2_1"; exon_number "3";
+chrT	test	exon	35600	35900	.	-	.	gene_id "GENE_PTC_F2"; transcript_id "TX_F2_1"; exon_number "2";
+chrT	test	exon	36200	36500	.	-	.	gene_id "GENE_PTC_F2"; transcript_id "TX_F2_1"; exon_number "1";
+chrT	test	CDS	35699	35900	.	-	0	gene_id "GENE_PTC_F2"; transcript_id "TX_F2_1"; exon_number "2";
+chrT	test	CDS	36200	36500	.	-	0	gene_id "GENE_PTC_F2"; transcript_id "TX_F2_1"; exon_number "1";
+chrT	test	start_codon	36498	36500	.	-	0	gene_id "GENE_PTC_F2"; transcript_id "TX_F2_1";
+chrT	test	stop_codon	35699	35701	.	-	0	gene_id "GENE_PTC_F2"; transcript_id "TX_F2_1";
+##
+## GENE_FD_F3: Mirror of D2 on - strand (frame-disrupting SE, 91bp)
+## Reference TX_F3_ref: 3 exons, Comparator TX_F3_comp: 2 exons
+## Exon1: 39000-39200, Exon2: 39400-39490 (91bp), Exon3: 39700-39900
+## CDS: 39000-39900 (all CDS)
+chrT	test	gene	39000	39900	.	-	.	gene_id "GENE_FD_F3"; gene_name "FD_F3";
+chrT	test	transcript	39000	39900	.	-	.	gene_id "GENE_FD_F3"; transcript_id "TX_F3_ref"; gene_name "FD_F3";
+chrT	test	exon	39000	39200	.	-	.	gene_id "GENE_FD_F3"; transcript_id "TX_F3_ref"; exon_number "3";
+chrT	test	exon	39400	39490	.	-	.	gene_id "GENE_FD_F3"; transcript_id "TX_F3_ref"; exon_number "2";
+chrT	test	exon	39700	39900	.	-	.	gene_id "GENE_FD_F3"; transcript_id "TX_F3_ref"; exon_number "1";
+chrT	test	CDS	39000	39200	.	-	0	gene_id "GENE_FD_F3"; transcript_id "TX_F3_ref"; exon_number "3";
+chrT	test	CDS	39400	39490	.	-	0	gene_id "GENE_FD_F3"; transcript_id "TX_F3_ref"; exon_number "2";
+chrT	test	CDS	39700	39900	.	-	0	gene_id "GENE_FD_F3"; transcript_id "TX_F3_ref"; exon_number "1";
+chrT	test	start_codon	39898	39900	.	-	0	gene_id "GENE_FD_F3"; transcript_id "TX_F3_ref";
+chrT	test	stop_codon	39000	39002	.	-	0	gene_id "GENE_FD_F3"; transcript_id "TX_F3_ref";
+chrT	test	transcript	39000	39900	.	-	.	gene_id "GENE_FD_F3"; transcript_id "TX_F3_comp"; gene_name "FD_F3";
+chrT	test	exon	39000	39200	.	-	.	gene_id "GENE_FD_F3"; transcript_id "TX_F3_comp"; exon_number "2";
+chrT	test	exon	39700	39900	.	-	.	gene_id "GENE_FD_F3"; transcript_id "TX_F3_comp"; exon_number "1";
+chrT	test	CDS	39000	39200	.	-	0	gene_id "GENE_FD_F3"; transcript_id "TX_F3_comp"; exon_number "2";
+chrT	test	CDS	39700	39900	.	-	0	gene_id "GENE_FD_F3"; transcript_id "TX_F3_comp"; exon_number "1";
+chrT	test	start_codon	39898	39900	.	-	0	gene_id "GENE_FD_F3"; transcript_id "TX_F3_comp";
+chrT	test	stop_codon	39000	39002	.	-	0	gene_id "GENE_FD_F3"; transcript_id "TX_F3_comp";
+##
+## ========================================================================
+## GROUP G: Edge cases
+## ========================================================================
+##
+## GENE_NC_G1: 3-exon, no CDS features → non-coding
+chrT	test	gene	42000	43500	.	+	.	gene_id "GENE_NC_G1"; gene_name "NC_G1";
+chrT	test	transcript	42000	43500	.	+	.	gene_id "GENE_NC_G1"; transcript_id "TX_G1_1"; gene_name "NC_G1";
+chrT	test	exon	42000	42200	.	+	.	gene_id "GENE_NC_G1"; transcript_id "TX_G1_1"; exon_number "1";
+chrT	test	exon	42500	42800	.	+	.	gene_id "GENE_NC_G1"; transcript_id "TX_G1_1"; exon_number "2";
+chrT	test	exon	43100	43500	.	+	.	gene_id "GENE_NC_G1"; transcript_id "TX_G1_1"; exon_number "3";
+##
+## GENE_NC_G2: 2 transcripts — one coding (TX_G2_coding), one non-coding (TX_G2_noncoding)
+chrT	test	gene	45000	46500	.	+	.	gene_id "GENE_NC_G2"; gene_name "NC_G2";
+chrT	test	transcript	45000	46500	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_coding"; gene_name "NC_G2";
+chrT	test	exon	45000	45300	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_coding"; exon_number "1";
+chrT	test	exon	45600	45900	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_coding"; exon_number "2";
+chrT	test	exon	46200	46500	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_coding"; exon_number "3";
+chrT	test	CDS	45100	45300	.	+	0	gene_id "GENE_NC_G2"; transcript_id "TX_G2_coding"; exon_number "1";
+chrT	test	CDS	45600	45900	.	+	0	gene_id "GENE_NC_G2"; transcript_id "TX_G2_coding"; exon_number "2";
+chrT	test	CDS	46200	46350	.	+	0	gene_id "GENE_NC_G2"; transcript_id "TX_G2_coding"; exon_number "3";
+chrT	test	start_codon	45100	45102	.	+	0	gene_id "GENE_NC_G2"; transcript_id "TX_G2_coding";
+chrT	test	stop_codon	46348	46350	.	+	0	gene_id "GENE_NC_G2"; transcript_id "TX_G2_coding";
+chrT	test	transcript	45000	46500	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_noncoding"; gene_name "NC_G2";
+chrT	test	exon	45000	45300	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_noncoding"; exon_number "1";
+chrT	test	exon	45600	45900	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_noncoding"; exon_number "2";
+chrT	test	exon	46200	46500	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_noncoding"; exon_number "3";

@@ -1,0 +1,41 @@
+Package: Isopair
+Type: Package
+Title: Isoform Pair Structural Analysis
+Version: 0.99.0
+Authors@R: person("Pete", "Castaldi", role = c("aut", "cre"),
+    email = "pcastaldi@bwh.harvard.edu",
+    comment = c(ORCID = "0000-0001-7557-338X"))
+Description: Detects, characterizes, and compares structural differences
+    between isoform pairs. Provides a comprehensive event detection engine
+    that identifies 12 types of splicing events (alternative TSS/TES,
+    alternative 5'/3' splice sites, skipped exons, intron retention, and
+    partial intron retention variants), reconstructs reference isoforms from
+    comparator structures, and builds splicing choice profiles for
+    downstream analysis.
+BiocType: Software
+URL: https://changit.bwh.harvard.edu/repjc/Isopair
+BugReports: https://changit.bwh.harvard.edu/repjc/Isopair/-/issues
+License: Artistic-2.0
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+biocViews: AlternativeSplicing, Transcriptomics, DifferentialSplicing,
+    RNASeq
+Imports:
+    dplyr,
+    tibble,
+    rlang,
+    rtracklayer,
+    stats
+Suggests:
+    metafor,
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    ggplot2,
+    BiocStyle
+VignetteBuilder: knitr
+LazyData: true
+Config/testthat/edition: 3
+Depends:
+    R (>= 4.1.0)
