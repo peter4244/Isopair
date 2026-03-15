@@ -10,7 +10,9 @@ buildProfiles(
   union_exons,
   isoform_union_mapping,
   verify = TRUE,
-  verbose = TRUE
+  verbose = TRUE,
+  checkpoint_dir = NULL,
+  checkpoint_interval = 1000L
 )
 }
 \arguments{
@@ -29,6 +31,14 @@ exon_starts and exon_ends.}
 \item{verify}{Logical; if TRUE (default), run reconstruction verification.}
 
 \item{verbose}{Logical; if TRUE, print progress messages.}
+
+\item{checkpoint_dir}{Optional directory path. If provided, saves partial
+results every \code{checkpoint_interval} pairs and can resume from the
+last checkpoint on re-invocation. After successful completion, checkpoint
+files are removed.}
+
+\item{checkpoint_interval}{Integer; save a checkpoint every this many pairs
+(default 1000). Only used when \code{checkpoint_dir} is not NULL.}
 }
 \value{
 A tibble of splicing choice profiles with one row per pair.

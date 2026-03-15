@@ -2,7 +2,7 @@
 % Please edit documentation in R/spatial.R
 \name{.classifyEventPairTopology}
 \alias{.classifyEventPairTopology}
-\title{Classify topology of one A5SS x A3SS event pair}
+\title{Classify topology of one 5'-boundary x 3'-boundary event pair}
 \usage{
 .classifyEventPairTopology(
   a5ss_event,
@@ -13,9 +13,9 @@
 )
 }
 \arguments{
-\item{a5ss_event}{One-row data frame for an A5SS event.}
+\item{a5ss_event}{One-row data frame for a 5' boundary event (A5SS or Partial_IR_5).}
 
-\item{a3ss_event}{One-row data frame for an A3SS event.}
+\item{a3ss_event}{One-row data frame for a 3' boundary event (A3SS or Partial_IR_3).}
 
 \item{exon_starts}{Integer vector of reference exon start coordinates.}
 
@@ -27,6 +27,6 @@
 Character: "F2F", "B2B", or "Distal".
 }
 \description{
-Classify topology of one A5SS x A3SS event pair
+Classify topology of one 5'-boundary x 3'-boundary event pair
 }
 \keyword{internal}

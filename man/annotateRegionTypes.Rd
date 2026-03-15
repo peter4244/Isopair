@@ -13,7 +13,7 @@ Typically from \code{buildUnionExons()$isoform_union_mapping}.}
 
 \item{cds_metadata}{A tibble from \code{extractCdsAnnotations()} with
 columns \code{isoform_id}, \code{coding_status}, \code{cds_start},
-\code{cds_stop}.}
+\code{cds_stop}, \code{strand}.}
 }
 \value{
 The input tibble with an added \code{region_type} column.
@@ -25,8 +25,10 @@ contains_orf_stop, contains_orf_start_stop, or non_coding.
 }
 \details{
 Classification uses the isoform's actual exon coordinates (not union exon
-segments). The comparison is strand-independent, using genomic min/max
-CDS coordinates.
+segments). The classification is strand-aware: for minus-strand genes,
+the 5'UTR is genomically to the right of the CDS and the 3'UTR is
+genomically to the left. The \code{strand} column in \code{cds_metadata}
+is required for correct directional labeling.
 }
 \examples{
 gtf_path <- system.file("extdata", "example_small.gtf", package = "Isopair")

@@ -20,7 +20,7 @@ any IDs not found in the GTF are returned with \code{coding_status =
 A tibble with columns: \code{isoform_id}, \code{coding_status}
 ("coding", "unknown"), \code{cds_start} (min genomic CDS coordinate),
 \code{cds_stop} (max genomic CDS coordinate), \code{orf_length} (total
-CDS bp).
+CDS bp), \code{strand} ("+", "-", or NA for unknown isoforms).
 }
 \description{
 Extracts coding sequence (CDS) coordinates for isoforms from a GTF

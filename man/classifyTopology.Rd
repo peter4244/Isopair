@@ -4,13 +4,28 @@
 \alias{classifyTopology}
 \title{Classify Boundary Event Topology}
 \usage{
-classifyTopology(profiles, structures, test = TRUE, n_perm = 1000L)
+classifyTopology(
+  profiles,
+  structures,
+  five_prime_types = "A5SS",
+  three_prime_types = "A3SS",
+  test = TRUE,
+  n_perm = 1000L
+)
 }
 \arguments{
 \item{profiles}{A tibble from \code{\link{buildProfiles}()} with
 \code{detailed_events}.}
 
 \item{structures}{A tibble from \code{\link{parseIsoformStructures}()}.}
+
+\item{five_prime_types}{Character vector of event types affecting the 5'
+splice site (exon donor boundary). Default \code{"A5SS"}. Partial_IR_5
+also affects this boundary.}
+
+\item{three_prime_types}{Character vector of event types affecting the 3'
+splice site (exon acceptor boundary). Default \code{"A3SS"}. Partial_IR_3
+also affects this boundary.}
 
 \item{test}{Logical; if TRUE (default), run permutation test for F2F
 enrichment.}
@@ -29,13 +44,18 @@ A named list with:
 }
 }
 \description{
-For profiles containing both A5SS and A3SS events, classifies each
-A5SS x A3SS pair into topology categories:
+For profiles containing boundary events at both the 5' and 3' splice sites,
+classifies each 5'-type x 3'-type pair into topology categories:
 \itemize{
 \item \strong{F2F} (Face-to-Face): events flank the same intron
 \item \strong{B2B} (Back-to-Back): events are on the same exon
 \item \strong{Distal}: events are on non-adjacent structural elements
 }
+}
+\details{
+By default, only A5SS and A3SS events are classified. Set
+\code{five_prime_types} and \code{three_prime_types} to include additional
+boundary event types such as Partial_IR_5 and Partial_IR_3.
 }
 \examples{
 data(example_profiles)
@@ -43,4 +63,10 @@ data(example_structures)
 topo <- classifyTopology(example_profiles, example_structures,
   test = FALSE)
 topo$summary
+
+# Include partial intron retention events
+topo2 <- classifyTopology(example_profiles, example_structures,
+  five_prime_types = c("A5SS", "Partial_IR_5"),
+  three_prime_types = c("A3SS", "Partial_IR_3"),
+  test = FALSE)
 }
