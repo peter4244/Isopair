@@ -12,3 +12,5 @@ Isopair.BiocCheck
 *.tar.gz
 inst/doc
 Plans/
+..Rcheck
+*.html

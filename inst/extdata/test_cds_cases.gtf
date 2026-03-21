@@ -294,3 +294,289 @@ chrT	test	transcript	45000	46500	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G
 chrT	test	exon	45000	45300	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_noncoding"; exon_number "1";
 chrT	test	exon	45600	45900	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_noncoding"; exon_number "2";
 chrT	test	exon	46200	46500	.	+	.	gene_id "GENE_NC_G2"; transcript_id "TX_G2_noncoding"; exon_number "3";
+##
+## ========================================================================
+## GROUP H: Frame walk scenarios (+ and - strand)
+## ========================================================================
+##
+## GENE_FW_H1: Compensated frameshift (two CDS events restore frame)
+## Reference TX_H1_ref: 4 exons (has both SEs)
+## Comparator TX_H1_comp: 2 exons (skips exon 2 and exon 3)
+## Exon1: 50000-50200, Exon2: 50400-50403 (4bp), Exon3: 50600-50601 (2bp), Exon4: 50800-51000
+## CDS: 50000-51000 (all CDS)
+## SE on exon2: LOSS 4bp CDS → offset = ((-4%%3)+3)%%3 = 2 → frameshift
+## SE on exon3: LOSS 2bp CDS → cumulative = -6, ((-6%%3)+3)%%3 = 0 → compensatory
+## frame_resolved = TRUE
+chrT	test	gene	50000	51000	.	+	.	gene_id "GENE_FW_H1"; gene_name "FW_H1";
+chrT	test	transcript	50000	51000	.	+	.	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref"; gene_name "FW_H1";
+chrT	test	exon	50000	50200	.	+	.	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref"; exon_number "1";
+chrT	test	exon	50400	50403	.	+	.	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref"; exon_number "2";
+chrT	test	exon	50600	50601	.	+	.	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref"; exon_number "3";
+chrT	test	exon	50800	51000	.	+	.	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref"; exon_number "4";
+chrT	test	CDS	50000	50200	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref"; exon_number "1";
+chrT	test	CDS	50400	50403	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref"; exon_number "2";
+chrT	test	CDS	50600	50601	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref"; exon_number "3";
+chrT	test	CDS	50800	51000	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref"; exon_number "4";
+chrT	test	start_codon	50000	50002	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref";
+chrT	test	stop_codon	50998	51000	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_ref";
+chrT	test	transcript	50000	51000	.	+	.	gene_id "GENE_FW_H1"; transcript_id "TX_H1_comp"; gene_name "FW_H1";
+chrT	test	exon	50000	50200	.	+	.	gene_id "GENE_FW_H1"; transcript_id "TX_H1_comp"; exon_number "1";
+chrT	test	exon	50800	51000	.	+	.	gene_id "GENE_FW_H1"; transcript_id "TX_H1_comp"; exon_number "2";
+chrT	test	CDS	50000	50200	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_comp"; exon_number "1";
+chrT	test	CDS	50800	51000	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_comp"; exon_number "2";
+chrT	test	start_codon	50000	50002	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_comp";
+chrT	test	stop_codon	50998	51000	.	+	0	gene_id "GENE_FW_H1"; transcript_id "TX_H1_comp";
+##
+## GENE_FW_H2: Unresolved frameshift (single 4bp SE loss)
+## Reference TX_H2_ref: 3 exons, Comparator TX_H2_comp: 2 exons (skips exon 2)
+## Exon1: 53000-53200, Exon2: 53400-53403 (4bp), Exon3: 53600-53900
+## CDS: 53000-53900 (all CDS)
+## SE on exon2: LOSS 4bp → offset = 2, unresolved
+## orf_length = 201+4+301 = 506. Frameshift from 53403 to 53900 CDS end.
+## frameshifted_bp = CDS bp from event to end = (53900-53404+1) = 497
+## pct_orf = 100*497/506 = 98.2%
+chrT	test	gene	53000	53900	.	+	.	gene_id "GENE_FW_H2"; gene_name "FW_H2";
+chrT	test	transcript	53000	53900	.	+	.	gene_id "GENE_FW_H2"; transcript_id "TX_H2_ref"; gene_name "FW_H2";
+chrT	test	exon	53000	53200	.	+	.	gene_id "GENE_FW_H2"; transcript_id "TX_H2_ref"; exon_number "1";
+chrT	test	exon	53400	53403	.	+	.	gene_id "GENE_FW_H2"; transcript_id "TX_H2_ref"; exon_number "2";
+chrT	test	exon	53600	53900	.	+	.	gene_id "GENE_FW_H2"; transcript_id "TX_H2_ref"; exon_number "3";
+chrT	test	CDS	53000	53200	.	+	0	gene_id "GENE_FW_H2"; transcript_id "TX_H2_ref"; exon_number "1";
+chrT	test	CDS	53400	53403	.	+	0	gene_id "GENE_FW_H2"; transcript_id "TX_H2_ref"; exon_number "2";
+chrT	test	CDS	53600	53900	.	+	0	gene_id "GENE_FW_H2"; transcript_id "TX_H2_ref"; exon_number "3";
+chrT	test	start_codon	53000	53002	.	+	0	gene_id "GENE_FW_H2"; transcript_id "TX_H2_ref";
+chrT	test	stop_codon	53898	53900	.	+	0	gene_id "GENE_FW_H2"; transcript_id "TX_H2_ref";
+chrT	test	transcript	53000	53900	.	+	.	gene_id "GENE_FW_H2"; transcript_id "TX_H2_comp"; gene_name "FW_H2";
+chrT	test	exon	53000	53200	.	+	.	gene_id "GENE_FW_H2"; transcript_id "TX_H2_comp"; exon_number "1";
+chrT	test	exon	53600	53900	.	+	.	gene_id "GENE_FW_H2"; transcript_id "TX_H2_comp"; exon_number "2";
+chrT	test	CDS	53000	53200	.	+	0	gene_id "GENE_FW_H2"; transcript_id "TX_H2_comp"; exon_number "1";
+chrT	test	CDS	53600	53900	.	+	0	gene_id "GENE_FW_H2"; transcript_id "TX_H2_comp"; exon_number "2";
+chrT	test	start_codon	53000	53002	.	+	0	gene_id "GENE_FW_H2"; transcript_id "TX_H2_comp";
+chrT	test	stop_codon	53898	53900	.	+	0	gene_id "GENE_FW_H2"; transcript_id "TX_H2_comp";
+##
+## GENE_FW_H3: Multi-shift: shift-compensate-shift (3 SEs)
+## Reference TX_H3_ref: 5 exons, Comparator TX_H3_comp: 2 exons
+## Exon1: 56000-56200, Exon2: 56400-56403 (4bp), Exon3: 56600-56601 (2bp),
+## Exon4: 56800-56804 (5bp), Exon5: 57000-57200
+## CDS: 56000-57200 (all CDS)
+## SE2: LOSS 4bp → offset 2 (frameshift)
+## SE3: LOSS 2bp → cumulative -6, offset 0 (compensatory)
+## SE4: LOSS 5bp → cumulative -11, offset ((-11%%3)+3)%%3 = 1 (frameshift again)
+## n_frameshifts=2, n_compensatory=1, frame_resolved=FALSE
+chrT	test	gene	56000	57200	.	+	.	gene_id "GENE_FW_H3"; gene_name "FW_H3";
+chrT	test	transcript	56000	57200	.	+	.	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; gene_name "FW_H3";
+chrT	test	exon	56000	56200	.	+	.	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "1";
+chrT	test	exon	56400	56403	.	+	.	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "2";
+chrT	test	exon	56600	56601	.	+	.	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "3";
+chrT	test	exon	56800	56804	.	+	.	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "4";
+chrT	test	exon	57000	57200	.	+	.	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "5";
+chrT	test	CDS	56000	56200	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "1";
+chrT	test	CDS	56400	56403	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "2";
+chrT	test	CDS	56600	56601	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "3";
+chrT	test	CDS	56800	56804	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "4";
+chrT	test	CDS	57000	57200	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref"; exon_number "5";
+chrT	test	start_codon	56000	56002	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref";
+chrT	test	stop_codon	57198	57200	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_ref";
+chrT	test	transcript	56000	57200	.	+	.	gene_id "GENE_FW_H3"; transcript_id "TX_H3_comp"; gene_name "FW_H3";
+chrT	test	exon	56000	56200	.	+	.	gene_id "GENE_FW_H3"; transcript_id "TX_H3_comp"; exon_number "1";
+chrT	test	exon	57000	57200	.	+	.	gene_id "GENE_FW_H3"; transcript_id "TX_H3_comp"; exon_number "2";
+chrT	test	CDS	56000	56200	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_comp"; exon_number "1";
+chrT	test	CDS	57000	57200	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_comp"; exon_number "2";
+chrT	test	start_codon	56000	56002	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_comp";
+chrT	test	stop_codon	57198	57200	.	+	0	gene_id "GENE_FW_H3"; transcript_id "TX_H3_comp";
+##
+## GENE_FW_H4: Minus strand, two CDS events for ordering test
+## Reference TX_H4_ref: 4 exons, Comparator TX_H4_comp: 2 exons
+## Exon1: 60000-60200 (- strand exon 4), Exon2: 60400-60403 (4bp, - exon 3)
+## Exon3: 60600-60601 (2bp, - exon 2), Exon4: 60800-61000 (- exon 1)
+## CDS: 60000-61000 (all CDS)
+## On - strand: 5'→3' order is exon4(60800-61000), exon3(60600-60601),
+##   exon2(60400-60403), exon1(60000-60200)
+## SE on exon3 (60600-60601, 2bp): processed FIRST (more 5' on minus)
+## SE on exon2 (60400-60403, 4bp): processed SECOND
+## Correct order: LOSS 2bp → offset 1, then LOSS 4bp → cumulative -6 → offset 0 (compensated)
+## Wrong order (ascending): LOSS 4bp → offset 2, then LOSS 2bp → offset 0 (same outcome here)
+## But the frameshift/compensatory FLAGS differ:
+## Correct: event at 60600 is frameshift, event at 60400 is compensatory
+## Wrong: event at 60400 is frameshift, event at 60600 is compensatory
+chrT	test	gene	60000	61000	.	-	.	gene_id "GENE_FW_H4"; gene_name "FW_H4";
+chrT	test	transcript	60000	61000	.	-	.	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref"; gene_name "FW_H4";
+chrT	test	exon	60000	60200	.	-	.	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref"; exon_number "4";
+chrT	test	exon	60400	60403	.	-	.	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref"; exon_number "3";
+chrT	test	exon	60600	60601	.	-	.	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref"; exon_number "2";
+chrT	test	exon	60800	61000	.	-	.	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref"; exon_number "1";
+chrT	test	CDS	60000	60200	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref"; exon_number "4";
+chrT	test	CDS	60400	60403	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref"; exon_number "3";
+chrT	test	CDS	60600	60601	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref"; exon_number "2";
+chrT	test	CDS	60800	61000	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref"; exon_number "1";
+chrT	test	start_codon	60998	61000	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref";
+chrT	test	stop_codon	60000	60002	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_ref";
+chrT	test	transcript	60000	61000	.	-	.	gene_id "GENE_FW_H4"; transcript_id "TX_H4_comp"; gene_name "FW_H4";
+chrT	test	exon	60000	60200	.	-	.	gene_id "GENE_FW_H4"; transcript_id "TX_H4_comp"; exon_number "2";
+chrT	test	exon	60800	61000	.	-	.	gene_id "GENE_FW_H4"; transcript_id "TX_H4_comp"; exon_number "1";
+chrT	test	CDS	60000	60200	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_comp"; exon_number "2";
+chrT	test	CDS	60800	61000	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_comp"; exon_number "1";
+chrT	test	start_codon	60998	61000	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_comp";
+chrT	test	stop_codon	60000	60002	.	-	0	gene_id "GENE_FW_H4"; transcript_id "TX_H4_comp";
+##
+## ========================================================================
+## GROUP J: Cross-isoform reading frame comparison
+## ========================================================================
+##
+## GENE_FRAME_J1: Same start codon, identical CDS → same_start_in_frame
+## Both isoforms: 3-exon CDS, exons [70000-70100], [70300-70500], [70700-70900]
+## CDS spans all exons. ORF length = 101 + 201 + 201 = 503
+chrT	test	gene	70000	70900	.	+	.	gene_id "GENE_FRAME_J1"; gene_name "FRAME_J1";
+chrT	test	transcript	70000	70900	.	+	.	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_ref"; gene_name "FRAME_J1";
+chrT	test	exon	70000	70100	.	+	.	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_ref"; exon_number "1";
+chrT	test	exon	70300	70500	.	+	.	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_ref"; exon_number "2";
+chrT	test	exon	70700	70900	.	+	.	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_ref"; exon_number "3";
+chrT	test	CDS	70000	70100	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_ref"; exon_number "1";
+chrT	test	CDS	70300	70500	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_ref"; exon_number "2";
+chrT	test	CDS	70700	70900	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_ref"; exon_number "3";
+chrT	test	start_codon	70000	70002	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_ref";
+chrT	test	stop_codon	70898	70900	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_ref";
+chrT	test	transcript	70000	70900	.	+	.	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_comp"; gene_name "FRAME_J1";
+chrT	test	exon	70000	70100	.	+	.	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_comp"; exon_number "1";
+chrT	test	exon	70300	70500	.	+	.	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_comp"; exon_number "2";
+chrT	test	exon	70700	70900	.	+	.	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_comp"; exon_number "3";
+chrT	test	CDS	70000	70100	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_comp"; exon_number "1";
+chrT	test	CDS	70300	70500	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_comp"; exon_number "2";
+chrT	test	CDS	70700	70900	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_comp"; exon_number "3";
+chrT	test	start_codon	70000	70002	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_comp";
+chrT	test	stop_codon	70898	70900	.	+	0	gene_id "GENE_FRAME_J1"; transcript_id "TX_J1_comp";
+##
+## GENE_FRAME_J2: Same start codon, comparator skips 5bp CDS exon → same_start_frameshift
+## Ref: 3-exon CDS [71000-71100], [71300-71304], [71500-71700]
+##   Exon 2 is 5bp (not divisible by 3). ORF = 101 + 5 + 201 = 307
+## Comp: 2-exon CDS [71000-71100], [71500-71700] (skips exon 2)
+##   ORF = 101 + 201 = 302
+## Shared CDS: [71000-71100] and [71500-71700]
+## At [71000-71100]: both phase 0 (same start). Match.
+## At [71500-71700]: ref accumulated 101+5=106 bp before → phase 106%3=1
+##                   comp accumulated 101 bp before → phase 101%3=2
+## Phase 1 ≠ 2 → frameshift at shared downstream region
+chrT	test	gene	71000	71700	.	+	.	gene_id "GENE_FRAME_J2"; gene_name "FRAME_J2";
+chrT	test	transcript	71000	71700	.	+	.	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_ref"; gene_name "FRAME_J2";
+chrT	test	exon	71000	71100	.	+	.	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_ref"; exon_number "1";
+chrT	test	exon	71300	71304	.	+	.	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_ref"; exon_number "2";
+chrT	test	exon	71500	71700	.	+	.	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_ref"; exon_number "3";
+chrT	test	CDS	71000	71100	.	+	0	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_ref"; exon_number "1";
+chrT	test	CDS	71300	71304	.	+	0	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_ref"; exon_number "2";
+chrT	test	CDS	71500	71700	.	+	0	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_ref"; exon_number "3";
+chrT	test	start_codon	71000	71002	.	+	0	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_ref";
+chrT	test	stop_codon	71698	71700	.	+	0	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_ref";
+chrT	test	transcript	71000	71700	.	+	.	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_comp"; gene_name "FRAME_J2";
+chrT	test	exon	71000	71100	.	+	.	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_comp"; exon_number "1";
+chrT	test	exon	71500	71700	.	+	.	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_comp"; exon_number "2";
+chrT	test	CDS	71000	71100	.	+	0	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_comp"; exon_number "1";
+chrT	test	CDS	71500	71700	.	+	0	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_comp"; exon_number "2";
+chrT	test	start_codon	71000	71002	.	+	0	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_comp";
+chrT	test	stop_codon	71698	71700	.	+	0	gene_id "GENE_FRAME_J2"; transcript_id "TX_J2_comp";
+##
+## GENE_FRAME_J3: Different start codons, 6bp apart → diff_start_same_frame
+## Ref: CDS starts at 72000. Exons [72000-72200], [72400-72600]
+##   ORF = 201 + 201 = 402
+## Comp: CDS starts at 72006. Exons [72006-72200], [72400-72600]
+##   ORF = 195 + 201 = 396
+## Different start codons (72000 vs 72006, 6bp = 2 codons apart)
+## Shared CDS: [72006-72200] and [72400-72600]
+## At [72006-72200]: ref phase = (72006-72000)%3 = 6%3 = 0
+##                   comp phase = (72006-72006)%3 = 0%3 = 0
+## Phase 0 == 0 → match. Same frame preserved despite different start.
+chrT	test	gene	72000	72600	.	+	.	gene_id "GENE_FRAME_J3"; gene_name "FRAME_J3";
+chrT	test	transcript	72000	72600	.	+	.	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_ref"; gene_name "FRAME_J3";
+chrT	test	exon	72000	72200	.	+	.	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_ref"; exon_number "1";
+chrT	test	exon	72400	72600	.	+	.	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_ref"; exon_number "2";
+chrT	test	CDS	72000	72200	.	+	0	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_ref"; exon_number "1";
+chrT	test	CDS	72400	72600	.	+	0	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_ref"; exon_number "2";
+chrT	test	start_codon	72000	72002	.	+	0	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_ref";
+chrT	test	stop_codon	72598	72600	.	+	0	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_ref";
+chrT	test	transcript	72006	72600	.	+	.	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_comp"; gene_name "FRAME_J3";
+chrT	test	exon	72006	72200	.	+	.	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_comp"; exon_number "1";
+chrT	test	exon	72400	72600	.	+	.	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_comp"; exon_number "2";
+chrT	test	CDS	72006	72200	.	+	0	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_comp"; exon_number "1";
+chrT	test	CDS	72400	72600	.	+	0	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_comp"; exon_number "2";
+chrT	test	start_codon	72006	72008	.	+	0	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_comp";
+chrT	test	stop_codon	72598	72600	.	+	0	gene_id "GENE_FRAME_J3"; transcript_id "TX_J3_comp";
+##
+## GENE_FRAME_J4: Different start codons, 7bp apart → diff_start_diff_frame
+## Ref: CDS starts at 73000. Exons [73000-73200], [73400-73600]
+## Comp: CDS starts at 73007. Exons [73007-73200], [73400-73600]
+## Shared CDS: [73007-73200] and [73400-73600]
+## At [73007-73200]: ref phase = (73007-73000)%3 = 7%3 = 1
+##                   comp phase = (73007-73007)%3 = 0%3 = 0
+## Phase 1 ≠ 0 → frame divergent
+chrT	test	gene	73000	73600	.	+	.	gene_id "GENE_FRAME_J4"; gene_name "FRAME_J4";
+chrT	test	transcript	73000	73600	.	+	.	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_ref"; gene_name "FRAME_J4";
+chrT	test	exon	73000	73200	.	+	.	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_ref"; exon_number "1";
+chrT	test	exon	73400	73600	.	+	.	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_ref"; exon_number "2";
+chrT	test	CDS	73000	73200	.	+	0	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_ref"; exon_number "1";
+chrT	test	CDS	73400	73600	.	+	0	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_ref"; exon_number "2";
+chrT	test	start_codon	73000	73002	.	+	0	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_ref";
+chrT	test	stop_codon	73598	73600	.	+	0	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_ref";
+chrT	test	transcript	73007	73600	.	+	.	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_comp"; gene_name "FRAME_J4";
+chrT	test	exon	73007	73200	.	+	.	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_comp"; exon_number "1";
+chrT	test	exon	73400	73600	.	+	.	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_comp"; exon_number "2";
+chrT	test	CDS	73007	73200	.	+	0	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_comp"; exon_number "1";
+chrT	test	CDS	73400	73600	.	+	0	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_comp"; exon_number "2";
+chrT	test	start_codon	73007	73009	.	+	0	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_comp";
+chrT	test	stop_codon	73598	73600	.	+	0	gene_id "GENE_FRAME_J4"; transcript_id "TX_J4_comp";
+##
+## GENE_FRAME_J5: One coding, one non-coding → non_coding
+## Ref: coding, CDS [74000-74200]
+## Comp: no CDS entries (non-coding transcript)
+chrT	test	gene	74000	74400	.	+	.	gene_id "GENE_FRAME_J5"; gene_name "FRAME_J5";
+chrT	test	transcript	74000	74200	.	+	.	gene_id "GENE_FRAME_J5"; transcript_id "TX_J5_ref"; gene_name "FRAME_J5";
+chrT	test	exon	74000	74200	.	+	.	gene_id "GENE_FRAME_J5"; transcript_id "TX_J5_ref"; exon_number "1";
+chrT	test	CDS	74000	74200	.	+	0	gene_id "GENE_FRAME_J5"; transcript_id "TX_J5_ref"; exon_number "1";
+chrT	test	start_codon	74000	74002	.	+	0	gene_id "GENE_FRAME_J5"; transcript_id "TX_J5_ref";
+chrT	test	stop_codon	74198	74200	.	+	0	gene_id "GENE_FRAME_J5"; transcript_id "TX_J5_ref";
+chrT	test	transcript	74200	74400	.	+	.	gene_id "GENE_FRAME_J5"; transcript_id "TX_J5_comp"; gene_name "FRAME_J5";
+chrT	test	exon	74200	74400	.	+	.	gene_id "GENE_FRAME_J5"; transcript_id "TX_J5_comp"; exon_number "1";
+##
+## GENE_FRAME_J6: Both coding, no shared CDS → no_shared_cds
+## Ref: CDS [75000-75200]
+## Comp: CDS [75500-75700] (completely non-overlapping)
+chrT	test	gene	75000	75700	.	+	.	gene_id "GENE_FRAME_J6"; gene_name "FRAME_J6";
+chrT	test	transcript	75000	75200	.	+	.	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_ref"; gene_name "FRAME_J6";
+chrT	test	exon	75000	75200	.	+	.	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_ref"; exon_number "1";
+chrT	test	CDS	75000	75200	.	+	0	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_ref"; exon_number "1";
+chrT	test	start_codon	75000	75002	.	+	0	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_ref";
+chrT	test	stop_codon	75198	75200	.	+	0	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_ref";
+chrT	test	transcript	75500	75700	.	+	.	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_comp"; gene_name "FRAME_J6";
+chrT	test	exon	75500	75700	.	+	.	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_comp"; exon_number "1";
+chrT	test	CDS	75500	75700	.	+	0	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_comp"; exon_number "1";
+chrT	test	start_codon	75500	75502	.	+	0	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_comp";
+chrT	test	stop_codon	75698	75700	.	+	0	gene_id "GENE_FRAME_J6"; transcript_id "TX_J6_comp";
+##
+## GENE_FRAME_J7: Minus strand mirror of J2 → same_start_frameshift
+## Ref: 3-exon CDS (- strand) [76000-76200], [76500-76504], [76700-76800]
+##   Start codon at max end = 76800. Exon order 5'→3': [76700-76800], [76500-76504], [76000-76200]
+##   ORF = 101 + 5 + 201 = 307
+## Comp: 2-exon CDS [76000-76200], [76700-76800] (skips 5bp exon)
+##   ORF = 101 + 201 = 302
+## Shared CDS: [76000-76200] and [76700-76800]
+## At [76700-76800] (5' for - strand, phase_pos = 76800):
+##   ref: first CDS exon in 5'→3' → phase = (76800-76800) = 0
+##   comp: first CDS exon → phase = (76800-76800) = 0. Match.
+## At [76000-76200] (3' for - strand, phase_pos = 76200):
+##   ref: accumulated 101 + 5 = 106 bp, then (76200-76200) = 0 → phase = 106%3 = 1
+##   comp: accumulated 101 bp, then (76200-76200) = 0 → phase = 101%3 = 2
+## Phase 1 ≠ 2 → frameshift
+chrT	test	gene	76000	76800	.	-	.	gene_id "GENE_FRAME_J7"; gene_name "FRAME_J7";
+chrT	test	transcript	76000	76800	.	-	.	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_ref"; gene_name "FRAME_J7";
+chrT	test	exon	76000	76200	.	-	.	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_ref"; exon_number "3";
+chrT	test	exon	76500	76504	.	-	.	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_ref"; exon_number "2";
+chrT	test	exon	76700	76800	.	-	.	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_ref"; exon_number "1";
+chrT	test	CDS	76000	76200	.	-	0	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_ref"; exon_number "3";
+chrT	test	CDS	76500	76504	.	-	0	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_ref"; exon_number "2";
+chrT	test	CDS	76700	76800	.	-	0	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_ref"; exon_number "1";
+chrT	test	start_codon	76798	76800	.	-	0	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_ref";
+chrT	test	stop_codon	76000	76002	.	-	0	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_ref";
+chrT	test	transcript	76000	76800	.	-	.	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_comp"; gene_name "FRAME_J7";
+chrT	test	exon	76000	76200	.	-	.	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_comp"; exon_number "2";
+chrT	test	exon	76700	76800	.	-	.	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_comp"; exon_number "1";
+chrT	test	CDS	76000	76200	.	-	0	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_comp"; exon_number "2";
+chrT	test	CDS	76700	76800	.	-	0	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_comp"; exon_number "1";
+chrT	test	start_codon	76798	76800	.	-	0	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_comp";
+chrT	test	stop_codon	76000	76002	.	-	0	gene_id "GENE_FRAME_J7"; transcript_id "TX_J7_comp";

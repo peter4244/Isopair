@@ -272,6 +272,170 @@ test_that("analyzeFrameDisruption: IR events excluded from frameshift", {
 })
 
 # ==========================================================================
+# analyzeFrameWalk()
+# ==========================================================================
+
+test_that("analyzeFrameWalk: H1 in-frame multi-exon skip", {
+  # H1: LOSS 4bp + LOSS 2bp in same comparator intron → single splice group
+  # Net CDS change: -6, 6%%3 = 0 → in-frame, no frameshift
+  profiles <- .make_fd_profiles(cds_structures,
+                                 "TX_H1_ref", "TX_H1_comp",
+                                 "GENE_FW_H1", "+")
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+  expect_true(fw$profile_summary$frame_resolved[1])
+  expect_equal(fw$profile_summary$n_frameshifts[1], 0L)
+  expect_equal(fw$profile_summary$n_compensatory[1], 0L)
+  # Single splice group
+  expect_equal(length(unique(fw$events$splice_group)), 1L)
+})
+
+test_that("analyzeFrameWalk: H2 unresolved frameshift", {
+  # H2: single 4bp LOSS, offset 2, no compensation
+  profiles <- .make_fd_profiles(cds_structures,
+                                 "TX_H2_ref", "TX_H2_comp",
+                                 "GENE_FW_H2", "+")
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+  expect_false(fw$profile_summary$frame_resolved[1])
+  expect_equal(fw$profile_summary$n_frameshifts[1], 1L)
+  expect_equal(fw$profile_summary$n_compensatory[1], 0L)
+  # frameshifted_bp should be positive
+  expect_true(fw$profile_summary$total_frameshifted_cds_bp[1] > 0L)
+  expect_true(fw$profile_summary$pct_orf_frameshifted[1] > 0)
+})
+
+test_that("analyzeFrameWalk: H3 multi-exon skip within single intron", {
+  # H3: three Missing_Internal events all within one comparator intron
+  # (same comp_junctions) → single splice group. Net CDS change: -4-2-5 = -11,
+  # 11%%3 = 2 → one frameshift, zero compensatory.
+  profiles <- .make_fd_profiles(cds_structures,
+                                 "TX_H3_ref", "TX_H3_comp",
+                                 "GENE_FW_H3", "+")
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+  expect_equal(fw$profile_summary$n_frameshifts[1], 1L)
+  expect_equal(fw$profile_summary$n_compensatory[1], 0L)
+  expect_false(fw$profile_summary$frame_resolved[1])
+  # All events should share one splice group
+  expect_equal(length(unique(fw$events$splice_group)), 1L)
+})
+
+test_that("analyzeFrameWalk: in-frame SE (6bp) no frameshift", {
+  # D1: 90bp SE, 90%%3=0 → no frameshift
+  profiles <- .make_fd_profiles(cds_structures,
+                                 "TX_D1_ref", "TX_D1_comp",
+                                 "GENE_FD_D1", "+")
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+  if (fw$profile_summary$n_cds_events[1] > 0L) {
+    expect_equal(fw$profile_summary$n_frameshifts[1], 0L)
+    expect_true(fw$profile_summary$frame_resolved[1])
+  }
+})
+
+test_that("analyzeFrameWalk: D2 single frameshift (91bp)", {
+  profiles <- .make_fd_profiles(cds_structures,
+                                 "TX_D2_ref", "TX_D2_comp",
+                                 "GENE_FD_D2", "+")
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+  expect_equal(fw$profile_summary$n_frameshifts[1], 1L)
+  expect_false(fw$profile_summary$frame_resolved[1])
+})
+
+test_that("analyzeFrameWalk: signed arithmetic prevents false compensation", {
+  # Construct profile manually: GAIN of 4bp then LOSS of 5bp
+  # Cumulative: +4 then +4-5 = -1, offset = ((-1%%3)+3)%%3 = 2
+  # Unsigned would give 4+5=9, 9%%3=0 (incorrectly compensated)
+  # These are independent splicing events (different junctions)
+  profiles <- tibble::tibble(
+    gene_id = "GENE_FD_D2",
+    reference_isoform_id = "TX_D2_ref",
+    comparator_isoform_id = "TX_D2_comp",
+    detailed_events = list(tibble::tibble(
+      event_type = c("SE", "A5SS"),
+      direction = c("GAIN", "LOSS"),
+      five_prime = c(25400L, 25495L),
+      three_prime = c(25403L, 25490L),
+      bp_diff = c(4L, 5L),
+      ref_junctions = c("25300:25400", "25490:25600"),
+      comp_junctions = c("25300:25403,25403:25500", "25495:25600")
+    ))
+  )
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+  # Should NOT be compensated — final offset should be non-zero
+  expect_false(fw$profile_summary$frame_resolved[1])
+  # Two independent splice groups
+  expect_equal(length(unique(fw$events$splice_group)), 2L)
+})
+
+test_that("analyzeFrameWalk: minus-strand ordering (H4)", {
+  # H4: minus strand, events at 60600 (more 5') and 60400 (more 3')
+  # 5'→3' on minus = descending genomic → 60600 first, then 60400
+  # Both events share same comp intron → single splice group
+  # Net: 2bp + 4bp = 6bp, 6%%3 = 0 → in-frame, no frameshift
+  profiles <- .make_fd_profiles(cds_structures,
+                                 "TX_H4_ref", "TX_H4_comp",
+                                 "GENE_FW_H4", "-")
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+
+  if (nrow(fw$events) >= 2L) {
+    # First event (5' on minus strand) should be the one at higher coords
+    expect_true(fw$events$genomic_start[1] >= fw$events$genomic_start[2])
+    # Same splice group
+    expect_equal(length(unique(fw$events$splice_group)), 1L)
+  }
+  expect_true(fw$profile_summary$frame_resolved[1])
+  expect_equal(fw$profile_summary$n_frameshifts[1], 0L)
+})
+
+test_that("analyzeFrameWalk: UTR-only events excluded", {
+  # Events entirely in UTR → n_cds_events = 0
+  profiles <- tibble::tibble(
+    gene_id = "GENE_CDS_A3",
+    reference_isoform_id = "TX_A3_1",
+    comparator_isoform_id = "TX_A3_1",
+    detailed_events = list(tibble::tibble(
+      event_type = "SE", direction = "LOSS",
+      five_prime = 5010L, three_prime = 5050L,
+      bp_diff = 40L
+    ))
+  )
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+  expect_equal(fw$profile_summary$n_cds_events[1], 0L)
+})
+
+test_that("analyzeFrameWalk: PTC cross-reference works", {
+  ptc <- computePtcStatus(cds_structures, cds_metadata)
+  profiles <- .make_fd_profiles(cds_structures,
+                                 "TX_D2_ref", "TX_D2_comp",
+                                 "GENE_FD_D2", "+")
+  fw <- analyzeFrameWalk(profiles, cds_metadata, ptc_table = ptc)
+  # comp is TX_D2_comp; should have a non-NA value if it was in PTC table
+  expect_false(is.na(fw$profile_summary$comparator_has_ptc[1]))
+})
+
+test_that("analyzeFrameWalk: PTC NA when no ptc_table", {
+  profiles <- .make_fd_profiles(cds_structures,
+                                 "TX_D2_ref", "TX_D2_comp",
+                                 "GENE_FD_D2", "+")
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+  expect_true(is.na(fw$profile_summary$comparator_has_ptc[1]))
+})
+
+test_that("analyzeFrameWalk: non-coding reference → skip", {
+  profiles <- tibble::tibble(
+    gene_id = "GENE_NC_G1",
+    reference_isoform_id = "TX_G1_1",
+    comparator_isoform_id = "TX_G1_1",
+    detailed_events = list(tibble::tibble(
+      event_type = "SE", direction = "LOSS",
+      five_prime = 42300L, three_prime = 42600L,
+      bp_diff = 300L
+    ))
+  )
+  fw <- analyzeFrameWalk(profiles, cds_metadata)
+  expect_equal(fw$profile_summary$n_cds_events[1], 0L)
+  expect_true(is.na(fw$profile_summary$frame_resolved[1]))
+})
+
+# ==========================================================================
 # Integration: end-to-end with real gene GTF (SRSF3 if available)
 # ==========================================================================
 
@@ -289,4 +453,221 @@ test_that("Integration: CDS extraction from test_real_genes.gtf works", {
   } else {
     skip("test_real_genes.gtf not available")
   }
+})
+
+
+# =============================================================================
+# extractCdsExons tests
+# =============================================================================
+
+test_that("extractCdsExons returns per-exon CDS intervals", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+
+  expect_true(nrow(cds_exons) > 0L)
+  expect_true(all(c("isoform_id", "cds_exon_start", "cds_exon_end",
+                     "strand", "cds_exon_rank") %in% names(cds_exons)))
+
+  # TX_A1_1 has 3 CDS exons
+  a1 <- cds_exons[cds_exons$isoform_id == "TX_A1_1", ]
+  expect_equal(nrow(a1), 3L)
+  expect_equal(a1$cds_exon_rank, c(1L, 2L, 3L))
+})
+
+test_that("extractCdsExons handles isoform_ids filter", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, isoform_ids = "TX_A1_1", verbose = FALSE)
+  expect_equal(length(unique(cds_exons$isoform_id)), 1L)
+  expect_equal(unique(cds_exons$isoform_id), "TX_A1_1")
+})
+
+test_that("extractCdsExons: minus strand rank is 5'→3'", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+
+  # TX_J7_ref is minus strand, 3 CDS exons
+  j7 <- cds_exons[cds_exons$isoform_id == "TX_J7_ref", ]
+  expect_equal(nrow(j7), 3L)
+  # Rank 1 should be the highest-coordinate exon (5' end on - strand)
+  expect_equal(j7$cds_exon_rank[j7$cds_exon_start == 76700], 1L)
+  expect_equal(j7$cds_exon_rank[j7$cds_exon_start == 76500], 2L)
+  expect_equal(j7$cds_exon_rank[j7$cds_exon_start == 76000], 3L)
+})
+
+
+# =============================================================================
+# compareIsoformFrames tests
+# =============================================================================
+
+test_that("compareIsoformFrames: same start, in-frame (J1)", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+  cds <- extractCdsAnnotations(gtf, verbose = FALSE)
+
+  pairs <- data.frame(
+    gene_id = "GENE_FRAME_J1",
+    reference_isoform_id = "TX_J1_ref",
+    comparator_isoform_id = "TX_J1_comp",
+    stringsAsFactors = FALSE
+  )
+  result <- compareIsoformFrames(pairs, cds_exons, cds)
+
+  expect_equal(nrow(result$pair_summary), 1L)
+  expect_equal(result$pair_summary$frame_category, "same_start_in_frame")
+  expect_true(result$pair_summary$same_start_codon)
+  expect_equal(result$pair_summary$pct_shared_cds_in_frame, 100)
+  expect_equal(result$pair_summary$pct_shared_cds_frameshifted, 0)
+  expect_true(all(result$region_detail$phase_match))
+})
+
+test_that("compareIsoformFrames: same start, frameshift (J2)", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+  cds <- extractCdsAnnotations(gtf, verbose = FALSE)
+
+  pairs <- data.frame(
+    gene_id = "GENE_FRAME_J2",
+    reference_isoform_id = "TX_J2_ref",
+    comparator_isoform_id = "TX_J2_comp",
+    stringsAsFactors = FALSE
+  )
+  result <- compareIsoformFrames(pairs, cds_exons, cds)
+
+  expect_equal(result$pair_summary$frame_category, "same_start_frameshift")
+  expect_true(result$pair_summary$same_start_codon)
+  # First shared region should match (upstream of skip), second should not
+  expect_equal(nrow(result$region_detail), 2L)
+  expect_true(result$region_detail$phase_match[1])   # [71000-71100] both phase 0
+  expect_false(result$region_detail$phase_match[2])   # [71500-71700] phase differs
+})
+
+test_that("compareIsoformFrames: diff start, frame preserved (J3)", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+  cds <- extractCdsAnnotations(gtf, verbose = FALSE)
+
+  pairs <- data.frame(
+    gene_id = "GENE_FRAME_J3",
+    reference_isoform_id = "TX_J3_ref",
+    comparator_isoform_id = "TX_J3_comp",
+    stringsAsFactors = FALSE
+  )
+  result <- compareIsoformFrames(pairs, cds_exons, cds)
+
+  expect_equal(result$pair_summary$frame_category, "diff_start_same_frame")
+  expect_false(result$pair_summary$same_start_codon)
+  expect_equal(result$pair_summary$pct_shared_cds_in_frame, 100)
+})
+
+test_that("compareIsoformFrames: diff start, frame divergent (J4)", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+  cds <- extractCdsAnnotations(gtf, verbose = FALSE)
+
+  pairs <- data.frame(
+    gene_id = "GENE_FRAME_J4",
+    reference_isoform_id = "TX_J4_ref",
+    comparator_isoform_id = "TX_J4_comp",
+    stringsAsFactors = FALSE
+  )
+  result <- compareIsoformFrames(pairs, cds_exons, cds)
+
+  expect_equal(result$pair_summary$frame_category, "diff_start_diff_frame")
+  expect_false(result$pair_summary$same_start_codon)
+  expect_true(result$pair_summary$pct_shared_cds_frameshifted > 0)
+})
+
+test_that("compareIsoformFrames: non-coding pair (J5)", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+  cds <- extractCdsAnnotations(gtf,
+    isoform_ids = c("TX_J5_ref", "TX_J5_comp"), verbose = FALSE)
+
+  pairs <- data.frame(
+    gene_id = "GENE_FRAME_J5",
+    reference_isoform_id = "TX_J5_ref",
+    comparator_isoform_id = "TX_J5_comp",
+    stringsAsFactors = FALSE
+  )
+  result <- compareIsoformFrames(pairs, cds_exons, cds)
+
+  expect_equal(result$pair_summary$frame_category, "non_coding")
+})
+
+test_that("compareIsoformFrames: no shared CDS (J6)", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+  cds <- extractCdsAnnotations(gtf, verbose = FALSE)
+
+  pairs <- data.frame(
+    gene_id = "GENE_FRAME_J6",
+    reference_isoform_id = "TX_J6_ref",
+    comparator_isoform_id = "TX_J6_comp",
+    stringsAsFactors = FALSE
+  )
+  result <- compareIsoformFrames(pairs, cds_exons, cds)
+
+  expect_equal(result$pair_summary$frame_category, "no_shared_cds")
+  expect_equal(result$pair_summary$n_shared_cds_regions, 0L)
+})
+
+test_that("compareIsoformFrames: minus strand frameshift (J7)", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+  cds <- extractCdsAnnotations(gtf, verbose = FALSE)
+
+  pairs <- data.frame(
+    gene_id = "GENE_FRAME_J7",
+    reference_isoform_id = "TX_J7_ref",
+    comparator_isoform_id = "TX_J7_comp",
+    stringsAsFactors = FALSE
+  )
+  result <- compareIsoformFrames(pairs, cds_exons, cds)
+
+  expect_equal(result$pair_summary$frame_category, "same_start_frameshift")
+  expect_true(result$pair_summary$same_start_codon)
+  expect_equal(nrow(result$region_detail), 2L)
+  # First region (5' on - strand = higher coordinates) should match
+  # Second region should not match
+  high_region <- result$region_detail[result$region_detail$region_start == 76700, ]
+  low_region <- result$region_detail[result$region_detail$region_start == 76000, ]
+  expect_true(high_region$phase_match)
+  expect_false(low_region$phase_match)
+})
+
+test_that("compareIsoformFrames: empty input", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+  cds <- extractCdsAnnotations(gtf, verbose = FALSE)
+
+  pairs <- data.frame(
+    gene_id = character(0),
+    reference_isoform_id = character(0),
+    comparator_isoform_id = character(0),
+    stringsAsFactors = FALSE
+  )
+  result <- compareIsoformFrames(pairs, cds_exons, cds)
+
+  expect_equal(nrow(result$pair_summary), 0L)
+  expect_equal(nrow(result$region_detail), 0L)
+})
+
+test_that("compareIsoformFrames: region_detail has correct columns and phase values", {
+  gtf <- system.file("extdata", "test_cds_cases.gtf", package = "Isopair")
+  cds_exons <- extractCdsExons(gtf, verbose = FALSE)
+  cds <- extractCdsAnnotations(gtf, verbose = FALSE)
+
+  pairs <- data.frame(
+    gene_id = "GENE_FRAME_J2",
+    reference_isoform_id = "TX_J2_ref",
+    comparator_isoform_id = "TX_J2_comp",
+    stringsAsFactors = FALSE
+  )
+  result <- compareIsoformFrames(pairs, cds_exons, cds)
+
+  expect_true(all(c("region_start", "region_end", "region_bp",
+                     "ref_phase_at_start", "comp_phase_at_start",
+                     "phase_match") %in% names(result$region_detail)))
+  expect_true(all(result$region_detail$ref_phase_at_start %in% 0:2))
+  expect_true(all(result$region_detail$comp_phase_at_start %in% 0:2))
 })

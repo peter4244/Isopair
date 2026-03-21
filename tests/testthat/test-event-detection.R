@@ -38,7 +38,7 @@ test_that("all 126 test pairs reconstruct correctly", {
         comp_for_recon <- comp_exons[, c("chr", "exon_start", "exon_end",
                                           "strand", "gene_id",
                                           "transcript_id")]
-        reconstructed <- reconstructDominant(comp_for_recon, events)
+        reconstructed <- reconstructReference(comp_for_recon, events)
 
         if (nrow(reconstructed) == 0) {
           list(status = "FAIL", reason = "Reconstruction produced 0 exons")

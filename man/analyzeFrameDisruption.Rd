@@ -12,7 +12,7 @@ a \code{detailed_events} list column.}
 
 \item{cds_metadata}{A tibble from \code{\link{extractCdsAnnotations}()}
 with columns: \code{isoform_id}, \code{coding_status},
-\code{cds_start}, \code{cds_stop}.}
+\code{cds_start}, \code{cds_stop}, \code{orf_length}, \code{strand}.}
 }
 \value{
 A list with two elements:
@@ -26,6 +26,15 @@ A list with two elements:
 }
 }
 \description{
+\strong{Deprecated.} Use \code{\link{analyzeFrameWalk}()} instead.
+
+\code{analyzeFrameDisruption()} is deprecated in favour of
+\code{\link{analyzeFrameWalk}()}, which provides richer per-event output
+(cumulative frame offsets, compensatory event detection, frameshifted CDS
+extent). This function is now a thin wrapper that calls
+\code{analyzeFrameWalk()} internally and transforms the output to match
+the original return format.
+
 For each splicing event in a set of profiles, computes CDS overlap and
 determines whether the event disrupts the reading frame (CDS overlap
 not divisible by 3). Only frameshift-capable event types are evaluated:
@@ -37,4 +46,8 @@ cds <- extractCdsAnnotations(gtf_path, verbose = FALSE)
 data(example_profiles)
 fd <- analyzeFrameDisruption(example_profiles, cds)
 fd$profile_summary
+}
+\seealso{
+\code{\link{analyzeFrameWalk}} for the replacement function with
+richer output.
 }

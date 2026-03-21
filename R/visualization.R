@@ -103,7 +103,7 @@ plotIsoformPair <- function(reference_exons, comparator_exons, events,
 
   p <- ggplot2::ggplot()
 
-  # Intron lines
+  # Intron lines with strand direction chevrons
   if (nrow(intron_data) > 0) {
     p <- p + ggplot2::geom_segment(
       data = intron_data,
@@ -111,6 +111,18 @@ plotIsoformPair <- function(reference_exons, comparator_exons, events,
                    y = .data$y_pos, yend = .data$y_pos),
       color = "gray50", linewidth = 0.4
     )
+
+    # Add chevrons indicating transcription direction
+    chevron_data <- .makeChevrons(intron_data, strand)
+    if (nrow(chevron_data) > 0) {
+      p <- p +
+        ggplot2::geom_segment(
+          data = chevron_data,
+          ggplot2::aes(x = .data$x, xend = .data$xend,
+                       y = .data$y, yend = .data$yend),
+          color = "gray50", linewidth = 0.3
+        )
+    }
   }
 
   # --- Exon rectangles ---
@@ -441,6 +453,76 @@ plotIsoformPair <- function(reference_exons, comparator_exons, events,
     y_pos = current_y)
 
   dplyr::bind_rows(merged)
+}
+
+
+#' Build chevron (arrowhead) segments indicating strand direction on introns
+#'
+#' Places small arrowhead marks at regular intervals along each intron line.
+#' For "+" strand, arrowheads point right (>); for "-" strand, they point
+#' left (<).
+#'
+#' @param intron_data A tibble with columns `exon_end`, `next_start`, `y_pos`
+#'   from [.makeIntrons()].
+#' @param strand Character; "+" or "-".
+#' @param spacing Numeric; minimum genomic distance between chevrons. Default
+#'   is NULL, which auto-calculates as ~5% of the total plotted range.
+#' @param size Numeric; half-height of the arrowhead in y-axis units.
+#'   Default 0.08.
+#' @return A tibble with columns `x`, `xend`, `y`, `yend` for each arrowhead
+#'   arm segment.
+#' @keywords internal
+.makeChevrons <- function(intron_data, strand, spacing = NULL, size = 0.08) {
+  if (nrow(intron_data) == 0L) {
+    return(data.frame(x = numeric(0), xend = numeric(0),
+                      y = numeric(0), yend = numeric(0)))
+  }
+
+  # Auto-calculate spacing if not provided
+  if (is.null(spacing)) {
+    total_range <- max(intron_data$next_start) - min(intron_data$exon_end)
+    spacing <- max(total_range * 0.03, 200)
+  }
+
+  # Width of each arrowhead arm in genomic coordinates
+  arm_width <- spacing * 0.3
+
+  # Collect all chevron segments across all introns
+  all_x <- numeric(0)
+  all_xend <- numeric(0)
+  all_y <- numeric(0)
+  all_yend <- numeric(0)
+
+  for (i in seq_len(nrow(intron_data))) {
+    intron_start <- intron_data$exon_end[i]
+    intron_end <- intron_data$next_start[i]
+    yv <- intron_data$y_pos[i]
+    intron_len <- intron_end - intron_start
+
+    # Skip very short introns
+    if (intron_len < arm_width * 3) next
+
+    # Place chevrons at even intervals within the intron
+    n_chev <- max(1L, floor(intron_len / spacing))
+    step <- intron_len / (n_chev + 1)
+    positions <- intron_start + step * seq_len(n_chev)
+
+    for (cx in positions) {
+      if (strand == "+") {
+        # Right-pointing arrowhead: > shape
+        all_x    <- c(all_x,    cx - arm_width, cx - arm_width)
+        all_xend <- c(all_xend, cx,             cx)
+      } else {
+        # Left-pointing arrowhead: < shape
+        all_x    <- c(all_x,    cx + arm_width, cx + arm_width)
+        all_xend <- c(all_xend, cx,             cx)
+      }
+      all_y    <- c(all_y,    yv + size, yv - size)
+      all_yend <- c(all_yend, yv,        yv)
+    }
+  }
+
+  data.frame(x = all_x, xend = all_xend, y = all_y, yend = all_yend)
 }
 
 

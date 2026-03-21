@@ -31,12 +31,12 @@
 #' events <- detectEvents(ref_exons, comp_exons,
 #'   "gene1", "tx_ref", "tx_comp", "+"
 #' )
-#' reconstructed <- reconstructDominant(comp_exons, events)
+#' reconstructed <- reconstructReference(comp_exons, events)
 #' nrow(reconstructed)
 #' @export
 #' @importFrom dplyr filter arrange distinct bind_rows mutate case_when
 #' @importFrom rlang .data
-reconstructDominant <- function(comparator_exons, events) {
+reconstructReference <- function(comparator_exons, events) {
   reconstructed <- comparator_exons
 
   # Handle empty events (zero-row tibble or data frame)
@@ -164,6 +164,24 @@ reconstructDominant <- function(comparator_exons, events) {
   }
 
   reconstructed
+}
+
+
+#' Reconstruct Reference Isoform (Deprecated)
+#'
+#' @description
+#' `r lifecycle::badge("deprecated")`
+#'
+#' `reconstructDominant()` was renamed to [reconstructReference()] to better
+#' reflect the reference/comparator terminology used throughout the package.
+#'
+#' @inheritParams reconstructReference
+#' @return Data frame of reconstructed reference exons.
+#' @export
+#' @keywords internal
+reconstructDominant <- function(comparator_exons, events) {
+  .Deprecated("reconstructReference")
+  reconstructReference(comparator_exons, events)
 }
 
 

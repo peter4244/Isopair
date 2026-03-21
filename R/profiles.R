@@ -14,6 +14,12 @@
 #'   [buildUnionExons()]$isoform_union_mapping.
 #' @param verify Logical; if TRUE (default), run reconstruction verification.
 #' @param verbose Logical; if TRUE, print progress messages.
+#' @param checkpoint_dir Optional directory path. If provided, saves partial
+#'   results every \code{checkpoint_interval} pairs and can resume from the
+#'   last checkpoint on re-invocation. After successful completion, checkpoint
+#'   files are removed.
+#' @param checkpoint_interval Integer; save a checkpoint every this many pairs
+#'   (default 1000). Only used when \code{checkpoint_dir} is not NULL.
 #' @return A tibble of splicing choice profiles with one row per pair.
 #' @examples
 #' gtf_path <- system.file("extdata", "example_small.gtf", package = "Isopair")
@@ -36,7 +42,9 @@
 #' @importFrom rlang .data
 buildProfiles <- function(pairs, structures, union_exons,
                           isoform_union_mapping,
-                          verify = TRUE, verbose = TRUE) {
+                          verify = TRUE, verbose = TRUE,
+                          checkpoint_dir = NULL,
+                          checkpoint_interval = 1000L) {
 
   if (verbose) message(sprintf("Building profiles for %d pairs...", nrow(pairs)))
 
@@ -58,8 +66,49 @@ buildProfiles <- function(pairs, structures, union_exons,
   expanded <- .expandStructures(structures)
 
   profiles <- list()
+  start_idx <- 1L
 
-  for (idx in seq_len(nrow(pairs))) {
+  # Checkpoint: resume from previous run if checkpoint_dir is set
+  use_checkpoint <- !is.null(checkpoint_dir)
+  if (use_checkpoint) {
+    if (!dir.exists(checkpoint_dir)) dir.create(checkpoint_dir, recursive = TRUE)
+
+    input_fingerprint <- paste(pairs$reference_isoform_id[1L],
+                                pairs$comparator_isoform_id[1L])
+
+    # Look for existing checkpoints
+    ckpt_files <- sort(list.files(checkpoint_dir, pattern = "^checkpoint_.*\\.rds$",
+                                   full.names = TRUE))
+    if (length(ckpt_files) > 0L) {
+      latest <- readRDS(ckpt_files[length(ckpt_files)])
+      if (latest$n_pairs == nrow(pairs) &&
+          latest$first_pair == input_fingerprint) {
+        profiles <- latest$profiles
+        start_idx <- latest$last_index + 1L
+        if (verbose) {
+          message(sprintf("  Resuming from checkpoint: %d/%d pairs already done",
+                          latest$last_index, nrow(pairs)))
+        }
+      } else {
+        warning("Checkpoint input mismatch; starting fresh.")
+        # Clean up stale checkpoints
+        file.remove(ckpt_files)
+      }
+    }
+  }
+
+  if (start_idx > nrow(pairs)) {
+    # All pairs already processed from checkpoint
+    result <- dplyr::bind_rows(profiles)
+    if (use_checkpoint) .cleanCheckpoints(checkpoint_dir)
+    if (verbose) {
+      message(sprintf("  Total profiles: %d covering %d genes",
+                      nrow(result), dplyr::n_distinct(result$gene_id)))
+    }
+    return(result)
+  }
+
+  for (idx in seq(start_idx, nrow(pairs))) {
     pair <- pairs[idx, ]
     gene <- pair$gene_id
     ref_id <- pair$reference_isoform_id
@@ -108,7 +157,7 @@ buildProfiles <- function(pairs, structures, union_exons,
                                      gene_strand)
           list(status = vr$status, reason = vr$reason)
         } else {
-          reconstructed <- reconstructDominant(comp_for_recon, events)
+          reconstructed <- reconstructReference(comp_for_recon, events)
           if (nrow(reconstructed) == 0L) {
             list(status = "FAIL",
                  reason = "Reconstruction produced 0 exons")
@@ -243,9 +292,29 @@ buildProfiles <- function(pairs, structures, union_exons,
     if (verbose && idx %% 100L == 0L) {
       message(sprintf("  Processed %d/%d pairs", idx, nrow(pairs)))
     }
+
+    # Save checkpoint
+    if (use_checkpoint && idx %% checkpoint_interval == 0L) {
+      ckpt_data <- list(
+        last_index = idx,
+        n_pairs = nrow(pairs),
+        first_pair = input_fingerprint,
+        profiles = profiles
+      )
+      tmp_path <- file.path(checkpoint_dir,
+                             sprintf(".tmp_checkpoint_%06d.rds", idx))
+      final_path <- file.path(checkpoint_dir,
+                                sprintf("checkpoint_%06d.rds", idx))
+      saveRDS(ckpt_data, tmp_path)
+      file.rename(tmp_path, final_path)
+      if (verbose) message(sprintf("  Checkpoint saved: %d/%d", idx, nrow(pairs)))
+    }
   }
 
   result <- dplyr::bind_rows(profiles)
+
+  # Clean up checkpoints on successful completion
+  if (use_checkpoint) .cleanCheckpoints(checkpoint_dir)
 
   if (verbose) {
     message(sprintf("  Total profiles: %d covering %d genes",
@@ -253,6 +322,18 @@ buildProfiles <- function(pairs, structures, union_exons,
   }
 
   result
+}
+
+
+#' Remove checkpoint files and directory
+#' @keywords internal
+.cleanCheckpoints <- function(checkpoint_dir) {
+  ckpt_files <- list.files(checkpoint_dir, pattern = "\\.rds$",
+                            full.names = TRUE)
+  if (length(ckpt_files) > 0L) file.remove(ckpt_files)
+  # Remove directory if empty
+  remaining <- list.files(checkpoint_dir, all.files = TRUE, no.. = TRUE)
+  if (length(remaining) == 0L) unlink(checkpoint_dir, recursive = TRUE)
 }
 
 

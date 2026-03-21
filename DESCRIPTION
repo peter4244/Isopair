@@ -1,7 +1,7 @@
 Package: Isopair
 Type: Package
 Title: Isoform Pair Structural Analysis
-Version: 0.99.0
+Version: 0.99.2
 Authors@R: person("Pete", "Castaldi", role = c("aut", "cre"),
     email = "pcastaldi@bwh.harvard.edu",
     comment = c(ORCID = "0000-0001-7557-338X"))
@@ -33,7 +33,11 @@ Suggests:
     knitr,
     rmarkdown,
     ggplot2,
-    BiocStyle
+    BiocStyle,
+    Biostrings,
+    GenomicRanges,
+    IRanges,
+    ORFik
 VignetteBuilder: knitr
 LazyData: true
 Config/testthat/edition: 3

@@ -2,7 +2,7 @@
 % Please edit documentation in R/reconstruction.R
 \name{reconstructDominant}
 \alias{reconstructDominant}
-\title{Reconstruct Reference Isoform from Comparator and Events}
+\title{Reconstruct Reference Isoform (Deprecated)}
 \usage{
 reconstructDominant(comparator_exons, events)
 }
@@ -16,26 +16,9 @@ chr, exon_start, exon_end, strand, gene_id, transcript_id.}
 Data frame of reconstructed reference exons.
 }
 \description{
-Starting from comparator exon coordinates, applies detected events to
-reconstruct the reference isoform structure. Events are applied in two
-phases: internal events first (with merging), then terminal events
-(without merging between events).
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}}
+
+\code{reconstructDominant()} was renamed to \code{\link[=reconstructReference]{reconstructReference()}} to better
+reflect the reference/comparator terminology used throughout the package.
 }
-\examples{
-# Detect events, then reconstruct reference from comparator
-ref_exons <- data.frame(
-  chr = "chr1", exon_start = c(100L, 300L, 500L),
-  exon_end = c(200L, 400L, 600L), strand = "+",
-  gene_id = "gene1", transcript_id = "tx_ref"
-)
-comp_exons <- data.frame(
-  chr = "chr1", exon_start = c(100L, 500L),
-  exon_end = c(200L, 600L), strand = "+",
-  gene_id = "gene1", transcript_id = "tx_comp"
-)
-events <- detectEvents(ref_exons, comp_exons,
-  "gene1", "tx_ref", "tx_comp", "+"
-)
-reconstructed <- reconstructDominant(comp_exons, events)
-nrow(reconstructed)
-}
+\keyword{internal}

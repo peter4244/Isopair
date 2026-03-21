@@ -62,7 +62,7 @@ test_that("plotIsoformPair: works with reconstructed track", {
     strand = gene_strand
   )
 
-  recon <- reconstructDominant(comp_df, events)
+  recon <- reconstructReference(comp_df, events)
 
   p <- plotIsoformPair(
     reference_exons = ref_df,

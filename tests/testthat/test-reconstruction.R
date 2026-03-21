@@ -1,6 +1,6 @@
 # Tests for reconstruction functions
 
-test_that("reconstructDominant handles empty events", {
+test_that("reconstructReference handles empty events", {
   # When no events: comparator is identical to reference
   exons <- data.frame(
     chr = "chr1", exon_start = c(100L, 300L, 500L),
@@ -9,9 +9,24 @@ test_that("reconstructDominant handles empty events", {
     stringsAsFactors = FALSE
   )
   events <- tibble::tibble()
-  result <- reconstructDominant(exons, events)
+  result <- reconstructReference(exons, events)
   expect_equal(nrow(result), 3)
   expect_equal(result$exon_start, c(100L, 300L, 500L))
+})
+
+test_that("reconstructDominant still works but emits deprecation warning", {
+  exons <- data.frame(
+    chr = "chr1", exon_start = c(100L, 300L, 500L),
+    exon_end = c(200L, 400L, 600L), strand = "+",
+    gene_id = "G1", transcript_id = "T1",
+    stringsAsFactors = FALSE
+  )
+  events <- tibble::tibble()
+  expect_warning(
+    result <- reconstructDominant(exons, events),
+    "deprecated"
+  )
+  expect_equal(nrow(result), 3)
 })
 
 test_that("verifyReconstruction passes for identical exons", {

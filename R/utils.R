@@ -80,3 +80,215 @@
   merged[[length(merged) + 1L]] <- current
   dplyr::bind_rows(merged)
 }
+
+
+#' Convert Genomic Position to Transcript Position
+#'
+#' Maps a genomic coordinate to the corresponding 1-based position in
+#' transcript (mRNA) space, accounting for exon structure and strand.
+#'
+#' @param genomic_pos Integer; the genomic coordinate to map.
+#' @param exon_starts Integer vector of exon start coordinates (1-based,
+#'   inclusive).
+#' @param exon_ends Integer vector of exon end coordinates (1-based,
+#'   inclusive).
+#' @param strand Character; "+" or "-".
+#' @return Integer transcript position (1-based), or \code{NA_integer_} if the
+#'   position is not exonic.
+#' @examples
+#' # Plus-strand gene with two exons: [100,200] and [300,400]
+#' genomicToTranscript(150, c(100, 300), c(200, 400), "+")  # returns 51
+#' genomicToTranscript(350, c(100, 300), c(200, 400), "+")  # returns 152
+#'
+#' # Minus-strand: transcript reads from high to low genomic coordinate
+#' genomicToTranscript(350, c(100, 300), c(200, 400), "-")  # returns 51
+#' @export
+genomicToTranscript <- function(genomic_pos, exon_starts, exon_ends, strand) {
+  if (is.na(genomic_pos)) return(NA_integer_)
+  if (strand == "-") {
+    exon_starts <- rev(exon_starts)
+    exon_ends   <- rev(exon_ends)
+  }
+  cum <- 0L
+  for (j in seq_along(exon_starts)) {
+    es <- exon_starts[j]; ee <- exon_ends[j]
+    if (strand == "+") {
+      if (genomic_pos >= es && genomic_pos <= ee)
+        return(cum + (genomic_pos - es) + 1L)
+    } else {
+      if (genomic_pos >= es && genomic_pos <= ee)
+        return(cum + (ee - genomic_pos) + 1L)
+    }
+    cum <- cum + (ee - es + 1L)
+  }
+  NA_integer_
+}
+
+
+#' Convert Transcript Position to Genomic Position
+#'
+#' Maps a 1-based transcript (mRNA) position to the corresponding genomic
+#' coordinate, accounting for exon structure and strand.
+#'
+#' @param tx_pos Integer; the 1-based transcript position.
+#' @param exon_starts Integer vector of exon start coordinates.
+#' @param exon_ends Integer vector of exon end coordinates.
+#' @param strand Character; "+" or "-".
+#' @return Integer genomic position, or \code{NA_integer_} if the position
+#'   exceeds the transcript length.
+#' @examples
+#' # Plus-strand gene with two exons: [100,200] and [300,400]
+#' transcriptToGenomic(51, c(100, 300), c(200, 400), "+")  # returns 150
+#' transcriptToGenomic(152, c(100, 300), c(200, 400), "+")  # returns 350
+#' @export
+transcriptToGenomic <- function(tx_pos, exon_starts, exon_ends, strand) {
+  if (is.na(tx_pos)) return(NA_integer_)
+  if (strand == "-") {
+    exon_starts <- rev(exon_starts)
+    exon_ends   <- rev(exon_ends)
+  }
+  cum <- 0L
+  for (j in seq_along(exon_starts)) {
+    es <- exon_starts[j]; ee <- exon_ends[j]
+    exon_len <- ee - es + 1L
+    if (tx_pos <= cum + exon_len) {
+      offset <- tx_pos - cum - 1L
+      if (strand == "+") return(es + offset)
+      else return(ee - offset)
+    }
+    cum <- cum + exon_len
+  }
+  NA_integer_
+}
+
+
+#' Get Strand-Aware Stop Codon Position
+#'
+#' Returns the strand-correct genomic position of the stop codon for each
+#' isoform. On + strand the stop is at \code{cds_stop} (larger coordinate);
+#' on - strand it is at \code{cds_start} (smaller coordinate).
+#'
+#' @param isoform_ids Character vector of isoform IDs.
+#' @param cds_metadata A tibble from \code{\link{extractCdsAnnotations}()}
+#'   with columns: \code{isoform_id}, \code{cds_start}, \code{cds_stop},
+#'   \code{strand}.
+#' @return Named numeric vector of stop codon genomic positions.
+#' @examples
+#' # Create minimal CDS metadata
+#' cds <- data.frame(
+#'   isoform_id = c("tx1", "tx2"),
+#'   cds_start = c(100, 500), cds_stop = c(400, 800),
+#'   strand = c("+", "-"), coding_status = "coding")
+#' getStrandAwareStop(c("tx1", "tx2"), cds)  # returns c(tx1=400, tx2=500)
+#' @export
+getStrandAwareStop <- function(isoform_ids, cds_metadata) {
+  idx <- match(isoform_ids, cds_metadata$isoform_id)
+  stops <- ifelse(cds_metadata$strand[idx] == "-",
+                   cds_metadata$cds_start[idx],
+                   cds_metadata$cds_stop[idx])
+  stats::setNames(stops, isoform_ids)
+}
+
+
+#' Compute Exonic UTR Lengths
+#'
+#' Computes the exonic 5'UTR and 3'UTR lengths for coding isoforms from their
+#' CDS boundaries and exon structure.
+#'
+#' @param structures A tibble from \code{\link{parseIsoformStructures}()}.
+#' @param cds_metadata A tibble from \code{\link{extractCdsAnnotations}()}.
+#' @param isoform_ids Optional character vector of isoform IDs to process.
+#'   If \code{NULL} (default), processes all coding isoforms.
+#' @return A tibble with columns: \code{isoform_id}, \code{utr5_bp},
+#'   \code{utr3_bp}, \code{cds_bp}, \code{tx_length}.
+#' @examples
+#' gtf_path <- system.file("extdata", "example_small.gtf", package = "Isopair")
+#' structures <- parseIsoformStructures(gtf_path, verbose = FALSE)
+#' cds <- extractCdsAnnotations(gtf_path, structures$isoform_id,
+#'   verbose = FALSE)
+#' utrs <- computeUtrLengths(structures, cds)
+#' head(utrs)
+#' @export
+#' @importFrom tibble tibble
+#' @importFrom dplyr bind_rows
+computeUtrLengths <- function(structures, cds_metadata, isoform_ids = NULL) {
+
+  coding <- cds_metadata[cds_metadata$coding_status == "coding", ]
+  if (!is.null(isoform_ids)) {
+    coding <- coding[coding$isoform_id %in% isoform_ids, ]
+  }
+
+  results <- vector("list", nrow(coding))
+
+  for (i in seq_len(nrow(coding))) {
+    iso_id <- coding$isoform_id[i]
+    str_idx <- match(iso_id, structures$isoform_id)
+    if (is.na(str_idx)) next
+
+    strand <- coding$strand[i]
+    cds_start <- coding$cds_start[i]
+    cds_stop  <- coding$cds_stop[i]
+    exon_s <- structures$exon_starts[[str_idx]]
+    exon_e <- structures$exon_ends[[str_idx]]
+
+    # Strand-aware CDS boundaries in transcription direction
+    cds5 <- if (strand == "+") cds_start else cds_stop
+    cds3 <- if (strand == "+") cds_stop else cds_start
+
+    utr5 <- 0L; utr3 <- 0L; cds_bp <- 0L
+    for (j in seq_along(exon_s)) {
+      if (strand == "+") {
+        # 5'UTR: exonic bp before cds_start
+        if (exon_s[j] < cds5) {
+          utr5 <- utr5 + min(exon_e[j], cds5 - 1L) - exon_s[j] + 1L
+        }
+        # 3'UTR: exonic bp after cds_stop
+        if (exon_e[j] > cds3) {
+          utr3 <- utr3 + exon_e[j] - max(exon_s[j], cds3 + 1L) + 1L
+        }
+      } else {
+        # Minus strand: 5'UTR is at high coordinates, 3'UTR at low
+        if (exon_e[j] > cds5) {
+          utr5 <- utr5 + exon_e[j] - max(exon_s[j], cds5 + 1L) + 1L
+        }
+        if (exon_s[j] < cds3) {
+          utr3 <- utr3 + min(exon_e[j], cds3 - 1L) - exon_s[j] + 1L
+        }
+      }
+    }
+
+    tx_len <- sum(exon_e - exon_s + 1L)
+    cds_bp <- tx_len - utr5 - utr3
+
+    results[[i]] <- tibble::tibble(
+      isoform_id = iso_id, utr5_bp = utr5, utr3_bp = utr3,
+      cds_bp = cds_bp, tx_length = tx_len)
+  }
+
+  dplyr::bind_rows(results)
+}
+
+
+#' Extract All Detailed Events from Profiles
+#'
+#' Concatenates the \code{detailed_events} list-column from a profiles data
+#' frame into a single data frame.
+#'
+#' @param profiles A data frame from \code{\link{buildProfiles}()} with a
+#'   \code{detailed_events} list-column.
+#' @param cols Optional character vector of columns to retain. If \code{NULL}
+#'   (default), all columns are kept.
+#' @return A data frame with all events concatenated.
+#' @examples
+#' # After building profiles:
+#' # all_events <- extractAllEvents(profiles)
+#' @export
+extractAllEvents <- function(profiles, cols = NULL) {
+  events_list <- lapply(seq_len(nrow(profiles)), function(i) {
+    de <- profiles$detailed_events[[i]]
+    if (is.null(de) || nrow(de) == 0L) return(NULL)
+    if (!is.null(cols)) de <- de[, intersect(cols, names(de)), drop = FALSE]
+    de
+  })
+  dplyr::bind_rows(events_list)
+}

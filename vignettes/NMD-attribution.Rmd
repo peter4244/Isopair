@@ -1,0 +1,507 @@
+---
+title: "NMD Mechanism Attribution with Isopair"
+author: "Pete Castaldi"
+output:
+  BiocStyle::html_document:
+    toc: true
+    toc_depth: 3
+vignette: >
+  %\VignetteIndexEntry{NMD Mechanism Attribution with Isopair}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 10,
+  fig.height = 6
+)
+eval_ggplot <- requireNamespace("ggplot2", quietly = TRUE)
+```
+
+# Introduction
+
+Nonsense-mediated mRNA decay (NMD) is triggered when a ribosome encounters a
+premature termination codon (PTC) more than 50 nucleotides upstream of an
+exon-exon junction. In long-read RNA-seq data, NMD-sensitive isoforms are
+identified empirically (e.g., by response to SMG1 inhibition), but the
+structural mechanism --- *which splice event created the PTC?* --- requires
+computational attribution.
+
+**Isopair** provides a complete workflow for this attribution:
+
+1. **Detect** splice events between isoform pairs (`buildProfiles()`)
+2. **Identify** PTCs from exon structure + CDS annotation (`computePtcStatus()`)
+3. **Trace** the reading frame through splice events (`analyzeFrameWalk()`)
+4. **Attribute** each PTC to a specific splice event and mechanism
+   (`attributePtcEvents()` for frameshift/in-frame stop;
+   `attribute3UtrSplice()` for same-stop 3'UTR mechanism)
+
+When transcript sequences are available, a fifth step uses
+`traceReferenceAtg()` to detect hidden PTCs in isoforms where CDS prediction
+software selected a different (non-PTC) reading frame.
+
+This vignette demonstrates the workflow using GENCODE-annotated isoforms from
+5 genes, including 3 with PTC-positive isoforms.
+
+# Setup
+
+```{r library, message=FALSE}
+library(Isopair)
+```
+
+```{r ggplot-setup, eval=eval_ggplot}
+library(ggplot2)
+theme_set(theme_bw(base_size = 14))
+```
+
+# Load and Prepare Data
+
+Isopair ships with example data from GENCODE v49:
+
+```{r load-data}
+gtf_path <- system.file("extdata", "example_small.gtf", package = "Isopair")
+structures <- parseIsoformStructures(gtf_path, verbose = FALSE)
+cds <- extractCdsAnnotations(gtf_path, structures$isoform_id, verbose = FALSE)
+
+cat("Isoforms:", nrow(structures), "from",
+    length(unique(structures$gene_id)), "genes\n")
+cat("Coding:", sum(cds$coding_status == "coding"), "\n")
+```
+
+# Step 1: PTC Detection
+
+`computePtcStatus()` applies the 50-nucleotide rule: a stop codon is premature
+if it is >50 nt upstream of the last exon-exon junction in mRNA space.
+
+```{r ptc-detection}
+ptc <- computePtcStatus(structures, cds)
+cat("PTC status:\n")
+print(table(ptc$has_ptc))
+```
+
+```{r ptc-table}
+# Show PTC+ isoforms with their features
+ptc_pos <- ptc[ptc$has_ptc == TRUE, ]
+ptc_display <- merge(ptc_pos,
+  structures[, c("isoform_id", "gene_id", "strand", "n_exons")])
+ptc_display$gene_short <- sub("\\.[0-9]+$", "", ptc_display$gene_id)
+ptc_display <- ptc_display[, c("gene_short", "isoform_id", "strand", "n_exons",
+                                "orf_length", "ptc_distance", "n_downstream_ejcs")]
+knitr::kable(ptc_display,
+             caption = "PTC-positive isoforms in the example dataset")
+```
+
+`r nrow(ptc_pos)` isoforms have PTCs, with distances ranging from
+`r min(ptc_pos$ptc_distance)` to `r max(ptc_pos$ptc_distance)` nt upstream of
+the last junction, and 1 to `r max(ptc_pos$n_downstream_ejcs)` downstream
+exon-exon junctions.
+
+# Step 2: Build Profiles and Detect Events
+
+We create isoform pairs and detect splice events. For this demonstration, we
+select the isoform with the most exons per gene as the reference (a proxy for
+the dominant isoform; in a real analysis, use `generatePairsExpression()` or
+`generatePairsDE()` which select references by expression level).
+
+```{r build-profiles}
+coding_structs <- structures[structures$isoform_id %in%
+  cds$isoform_id[cds$coding_status == "coding"], ]
+
+# Build pairs: reference = most exons per gene, comparators = all others
+pairs_list <- list()
+for (g in unique(coding_structs$gene_id)) {
+  g_iso <- coding_structs[coding_structs$gene_id == g, ]
+  if (nrow(g_iso) < 2) next
+  ref_id <- g_iso$isoform_id[which.max(g_iso$n_exons)]
+  comp_ids <- g_iso$isoform_id[g_iso$isoform_id != ref_id]
+  for (cid in comp_ids) {
+    pairs_list[[length(pairs_list) + 1]] <- data.frame(
+      gene_id = g, reference_isoform_id = ref_id,
+      comparator_isoform_id = cid, stringsAsFactors = FALSE)
+  }
+}
+pairs <- do.call(rbind, pairs_list)
+cat("Pairs:", nrow(pairs), "across",
+    length(unique(pairs$gene_id)), "genes\n")
+
+# Build union exons (required by buildProfiles)
+ue <- buildUnionExons(structures)
+
+# Build profiles with full event detection
+profiles <- buildProfiles(pairs, structures,
+                           ue$union_exons, ue$isoform_union_mapping,
+                           verbose = FALSE)
+cat("Profiles built:", nrow(profiles), "\n")
+```
+
+## Extracting Events
+
+`extractAllEvents()` flattens the `detailed_events` list-column from profiles
+into a single data frame for analysis:
+
+```{r extract-events}
+all_events <- extractAllEvents(profiles)
+cat("Total events:", nrow(all_events), "\n")
+cat("Event types:\n")
+print(sort(table(all_events$event_type), decreasing = TRUE))
+```
+
+# Step 3: Reading Frame Analysis
+
+`analyzeFrameWalk()` traces the reading frame through each CDS-overlapping
+splice event, tracking the cumulative frame offset. An event that shifts the
+frame (bp change not divisible by 3) is flagged as `is_frameshift`. Events
+that restore a previous shift are flagged as `is_compensatory`.
+
+```{r frame-walk}
+fw <- analyzeFrameWalk(profiles, cds)
+
+cat("Frame walk results:\n")
+cat("  Events analyzed:", nrow(fw$events), "\n")
+cat("  Pairs with frameshifts:",
+    sum(fw$profile_summary$n_frameshifts > 0), "\n")
+cat("  Compensatory events:",
+    sum(fw$events$is_compensatory, na.rm = TRUE), "\n")
+```
+
+```{r frame-walk-detail}
+if (nrow(fw$events) > 0) {
+  evt_display <- fw$events[, c("gene_id", "comparator_isoform_id",
+    "event_type", "direction", "cds_overlap_bp", "signed_cds_change",
+    "cumulative_frame_offset", "is_frameshift")]
+  evt_display$gene_short <- sub("\\.[0-9]+$", "", evt_display$gene_id)
+  knitr::kable(evt_display[, c("gene_short", "comparator_isoform_id",
+    "event_type", "direction", "cds_overlap_bp", "signed_cds_change",
+    "cumulative_frame_offset", "is_frameshift")],
+    caption = "Frame walk events: each row is a CDS-overlapping splice event")
+}
+```
+
+The `cumulative_frame_offset` column tracks the running reading frame state
+(0 = in-frame, 1 or 2 = shifted). When `is_frameshift` is TRUE, the event
+(or its splice group) has shifted the frame, which typically creates a
+downstream PTC.
+
+# Step 4: PTC Attribution
+
+For each PTC+ pair, we identify which specific splice event caused the
+premature stop codon. The attribution uses a three-mechanism framework:
+
+1. **Frameshift**: a splice event shifts the reading frame, creating a stop
+   codon in the new frame
+2. **In-frame stop**: a splice event introduces exonic sequence containing an
+   in-frame stop codon
+3. **3'UTR splice**: the reference and comparator share the same stop codon,
+   but a downstream splice event repositions an EJC, making the shared stop
+   premature
+
+Mechanisms 1 and 2 are handled by `attributePtcEvents()`. Mechanism 3
+(same-stop pairs) is handled by `attribute3UtrSplice()`.
+
+## Classify PTC+ Pairs
+
+We first need to determine which PTC+ pairs have a different stop codon
+(diff-stop, mechanisms 1-2) versus the same stop codon (same-stop,
+mechanism 3). `compareIsoformFrames()` provides the frame category, which
+tells us whether the pair shares the same CDS start and whether the reading
+frame is preserved.
+
+```{r classify-ptc-pairs}
+# Identify PTC+ pairs
+ptc_lookup <- setNames(ptc$has_ptc, ptc$isoform_id)
+profiles$comp_has_ptc <- ptc_lookup[profiles$comparator_isoform_id]
+ptc_plus_pairs <- profiles[profiles$comp_has_ptc == TRUE, ]
+
+cat("PTC+ pairs:", nrow(ptc_plus_pairs), "\n")
+```
+
+```{r same-vs-diff-stop}
+if (nrow(ptc_plus_pairs) > 0) {
+  # Strand-aware stop positions
+  stop_pos <- getStrandAwareStop(ptc_plus_pairs$comparator_isoform_id, cds)
+  ref_stop <- getStrandAwareStop(ptc_plus_pairs$reference_isoform_id, cds)
+  strand_vec <- setNames(
+    cds$strand[match(ptc_plus_pairs$comparator_isoform_id, cds$isoform_id)],
+    ptc_plus_pairs$comparator_isoform_id)
+
+  same_stop <- stop_pos == ref_stop
+  cat("Same-stop pairs:", sum(same_stop, na.rm = TRUE), "\n")
+  cat("Diff-stop pairs:", sum(!same_stop, na.rm = TRUE), "\n")
+}
+```
+
+## Attribute Diff-Stop Pairs (Frameshift / In-Frame Stop)
+
+For diff-stop pairs, `attributePtcEvents()` checks whether the PTC was
+caused by a reading frame shift or by an in-frame stop codon introduced by
+a splice event. It uses the frame walk results from Step 3 to identify
+frameshift events, and coordinate containment to find events spanning
+in-frame stops.
+
+```{r attribute-diff-stop}
+if (nrow(ptc_plus_pairs) > 0 && any(!same_stop, na.rm = TRUE)) {
+  diffstop <- ptc_plus_pairs[!same_stop, ]
+
+  # Compare reading frames to determine frameshift category
+  cds_exons <- extractCdsExons(gtf_path, verbose = FALSE)
+  fc <- compareIsoformFrames(profiles, cds_exons, cds)
+  fs_cats <- c("same_start_frameshift",
+               "diff_start_diff_frame_with_frameshift")
+  is_fs <- setNames(fc$pair_summary$frame_category %in% fs_cats,
+                      fc$pair_summary$comparator_isoform_id)
+
+  diffstop_attr <- attributePtcEvents(
+    pairs = diffstop[, c("comparator_isoform_id", "reference_isoform_id")],
+    fw_events = fw$events,
+    profiles = profiles,
+    ptc_genomic_pos = stop_pos[diffstop$comparator_isoform_id],
+    strand_vec = strand_vec[diffstop$comparator_isoform_id],
+    is_frameshift_vec = is_fs[diffstop$comparator_isoform_id])
+
+  cat("Diff-stop attribution:\n")
+  print(table(diffstop_attr$mechanism))
+  knitr::kable(diffstop_attr,
+    caption = "PTC attribution for diff-stop pairs (mechanisms 1-2)")
+}
+```
+
+## Attribute Same-Stop Pairs (3'UTR Splice)
+
+For same-stop pairs, the PTC arises not from a different stop codon but from
+a splice event downstream of the stop that repositions an exon-exon junction.
+`attribute3UtrSplice()` finds the nearest downstream event:
+
+```{r attribute-same-stop}
+if (nrow(ptc_plus_pairs) > 0 && any(same_stop, na.rm = TRUE)) {
+  samestop <- ptc_plus_pairs[same_stop, ]
+
+  samestop_attr <- attribute3UtrSplice(
+    pairs = samestop[, c("comparator_isoform_id", "reference_isoform_id")],
+    profiles = profiles,
+    stop_genomic_pos = stop_pos[samestop$comparator_isoform_id],
+    strand_vec = strand_vec[samestop$comparator_isoform_id])
+
+  cat("Same-stop (3'UTR splice) attribution:\n")
+  print(table(samestop_attr$ptc_causing_event))
+  knitr::kable(samestop_attr,
+    caption = "PTC attribution for same-stop pairs (mechanism 3)")
+} else {
+  cat("No same-stop PTC+ pairs in this example dataset.\n")
+}
+```
+
+# Coordinate Utilities
+
+Isopair provides coordinate conversion between genomic and transcript
+(mRNA) space. Both functions use 1-based inclusive coordinates (matching
+GTF convention):
+
+```{r coordinate-demo}
+# Plus-strand gene with 3 exons: [1000,1100], [2000,2200], [3000,3300]
+exon_starts <- c(1000L, 2000L, 3000L)
+exon_ends <- c(1100L, 2200L, 3300L)
+
+# Genomic position 2050 maps to transcript position:
+tx_pos <- genomicToTranscript(2050, exon_starts, exon_ends, "+")
+cat("Plus strand: genomic 2050 -> transcript position", tx_pos, "\n")
+
+# Round-trip back to genomic:
+back <- transcriptToGenomic(tx_pos, exon_starts, exon_ends, "+")
+cat("Round-trip: transcript", tx_pos, "-> genomic", back, "\n")
+
+# Minus strand: transcript reads from high to low genomic coordinates
+tx_minus <- genomicToTranscript(2050, exon_starts, exon_ends, "-")
+cat("Minus strand: genomic 2050 -> transcript position", tx_minus, "\n")
+
+# Intronic positions return NA:
+cat("Intronic position:", genomicToTranscript(1500, exon_starts, exon_ends, "+"), "\n")
+```
+
+# UTR Length Analysis
+
+`computeUtrLengths()` computes strand-aware exonic 5'UTR, 3'UTR, and CDS
+lengths from structure and CDS annotation:
+
+```{r utr-lengths}
+utrs <- computeUtrLengths(structures, cds)
+cat("UTR lengths for", nrow(utrs), "coding isoforms:\n")
+cat("  Median 5'UTR:", median(utrs$utr5_bp), "bp\n")
+cat("  Median 3'UTR:", median(utrs$utr3_bp), "bp\n")
+cat("  Median CDS:", median(utrs$cds_bp), "bp\n")
+```
+
+```{r utr-ptc-comparison, eval=eval_ggplot, fig.height=5}
+utrs$has_ptc <- ptc$has_ptc[match(utrs$isoform_id, ptc$isoform_id)]
+utrs_coding <- utrs[!is.na(utrs$has_ptc), ]
+
+utr_long <- rbind(
+  data.frame(region = "5'UTR", length = utrs_coding$utr5_bp,
+             ptc = ifelse(utrs_coding$has_ptc, "PTC+", "PTC-")),
+  data.frame(region = "3'UTR", length = utrs_coding$utr3_bp,
+             ptc = ifelse(utrs_coding$has_ptc, "PTC+", "PTC-")))
+
+ggplot(utr_long, aes(x = ptc, y = length, fill = ptc)) +
+  geom_boxplot(alpha = 0.7, outlier.size = 1.5) +
+  facet_wrap(~region, scales = "free_y") +
+  scale_fill_manual(values = c("PTC+" = "#d6604d", "PTC-" = "#4393c3")) +
+  labs(title = "UTR Lengths: PTC+ vs PTC- Isoforms",
+       subtitle = sprintf("PTC+: %d | PTC-: %d coding isoforms",
+                          sum(utrs_coding$has_ptc), sum(!utrs_coding$has_ptc)),
+       x = NULL, y = "Exonic length (bp)") +
+  theme(legend.position = "none", text = element_text(size = 14))
+```
+
+PTC+ isoforms tend to have longer measured 3'UTRs because their premature stop
+is upstream of the annotated stop --- the region between the PTC and the
+transcript end is classified as "3'UTR" even though part of it was originally
+CDS. This artifact is important to account for when interpreting 3'UTR length
+in NMD studies.
+
+# Reference ATG Tracing (Hidden PTC Detection)
+
+CDS prediction tools (e.g., TransDecoder2) select the longest high-scoring
+ORF, which may not be the ORF the ribosome actually translates. When a splice
+event creates a frameshift that truncates the reading frame, the CDS predictor
+may select a different ORF whose stop codon has no downstream EJCs --- making
+the isoform appear PTC-negative.
+
+`traceReferenceAtg()` addresses this by tracing the reference isoform's CDS
+start ATG through each comparator, walking the reading frame to find the first
+stop codon, and counting downstream junctions. This requires transcript
+sequences:
+
+```{r trace-reference-atg}
+# For demonstration, construct minimal sequences for one gene.
+# In practice, sequences come from the SQANTI-corrected FASTA.
+# We use gene ENSG00000112081.19 (SRSF3), which has PTC+ isoforms.
+
+demo_gene <- "ENSG00000112081.19"
+demo_structs <- structures[structures$gene_id == demo_gene, ]
+demo_cds <- cds[cds$isoform_id %in% demo_structs$isoform_id, ]
+demo_coding <- demo_cds[demo_cds$coding_status == "coding", ]
+
+cat("Gene:", demo_gene, "\n")
+cat("Coding isoforms:", nrow(demo_coding), "\n")
+for (i in seq_len(nrow(demo_coding))) {
+  iso <- demo_coding$isoform_id[i]
+  has_p <- if (iso %in% ptc$isoform_id) ptc$has_ptc[ptc$isoform_id == iso] else NA
+  cat(sprintf("  %s: CDS %d-%d, PTC=%s\n",
+              iso, demo_coding$cds_start[i], demo_coding$cds_stop[i], has_p))
+}
+
+# Build synthetic sequences matching the exon structure.
+# Each isoform's transcript sequence = concatenated exon sequences.
+# We place ATG at the CDS start position and a stop codon at the CDS stop.
+build_demo_seq <- function(iso_id, structs, cds_row) {
+  str_row <- structs[structs$isoform_id == iso_id, ]
+  exon_s <- str_row$exon_starts[[1]]
+  exon_e <- str_row$exon_ends[[1]]
+  tx_len <- sum(exon_e - exon_s + 1L)
+
+  # Start with random non-stop codons
+  seq_chars <- rep("A", tx_len)
+
+  # Map CDS start to transcript position
+  cds5 <- if (cds_row$strand == "+") cds_row$cds_start else cds_row$cds_stop
+  cds3 <- if (cds_row$strand == "+") cds_row$cds_stop else cds_row$cds_start
+  atg_tx <- genomicToTranscript(cds5, exon_s, exon_e, cds_row$strand)
+  stop_tx <- genomicToTranscript(cds3, exon_s, exon_e, cds_row$strand)
+
+  if (!is.na(atg_tx) && atg_tx + 2 <= tx_len) {
+    seq_chars[atg_tx:(atg_tx + 2)] <- c("A", "T", "G")
+  }
+  if (!is.na(stop_tx) && stop_tx + 2 <= tx_len) {
+    seq_chars[stop_tx:(stop_tx + 2)] <- c("T", "A", "A")
+  }
+
+  # Fill CDS region with non-stop codons (GCA repeated)
+  if (!is.na(atg_tx) && !is.na(stop_tx) && atg_tx < stop_tx) {
+    cds_start <- atg_tx + 3L
+    cds_end <- stop_tx - 1L
+    if (cds_end >= cds_start) {
+      cds_len <- cds_end - cds_start + 1L
+      fill <- rep(c("G", "C", "A"), length.out = cds_len)
+      seq_chars[cds_start:cds_end] <- fill
+    }
+  }
+
+  paste(seq_chars, collapse = "")
+}
+
+demo_seqs <- setNames(
+  sapply(demo_coding$isoform_id, function(iso) {
+    build_demo_seq(iso, demo_structs, demo_coding[demo_coding$isoform_id == iso, ])
+  }),
+  demo_coding$isoform_id)
+
+cat("\nSequences built:", length(demo_seqs), "isoforms\n")
+cat("Lengths:", paste(nchar(demo_seqs), collapse = ", "), "\n")
+```
+
+```{r run-trace}
+# Create pairs: reference (non-PTC) vs comparator (PTC+)
+ref_iso <- demo_coding$isoform_id[
+  !demo_coding$isoform_id %in% ptc_pos$isoform_id][1]
+comp_isos <- demo_coding$isoform_id[
+  demo_coding$isoform_id %in% ptc_pos$isoform_id]
+
+if (length(ref_iso) > 0 && length(comp_isos) > 0) {
+  trace_pairs <- data.frame(
+    reference_isoform_id = ref_iso,
+    comparator_isoform_id = comp_isos,
+    stringsAsFactors = FALSE)
+
+  trace_result <- traceReferenceAtg(
+    pairs = trace_pairs,
+    structures = demo_structs,
+    cds_metadata = demo_cds,
+    sequences = demo_seqs)
+
+  knitr::kable(
+    trace_result[, c("reference_isoform_id", "comparator_isoform_id",
+                      "ref_atg_exonic_in_comp", "ref_orf_length",
+                      "comp_orf_length", "n_downstream_ejc", "category")],
+    caption = "Reference-ATG tracing results")
+
+  cat("\nCategories:\n")
+  print(table(trace_result$category))
+}
+```
+
+The `category` column classifies each pair:
+
+- **effectively_ptc**: the reference ATG reading frame terminates early with
+  downstream EJCs --- a hidden PTC that CDS prediction missed
+- **truncated_no_ejc**: the ORF is shorter but the stop has no downstream EJCs
+- **ref_atg_lost**: the reference ATG is not exonic in the comparator
+- **no_downstream_ejc**: the ORF is intact or longer, no downstream EJCs
+
+# Summary
+
+The Isopair NMD attribution workflow provides:
+
+| Function | Purpose |
+|----------|---------|
+| `computePtcStatus()` | PTC detection (50-nt rule) |
+| `buildProfiles()` | Splice event detection with genomic coordinates |
+| `analyzeFrameWalk()` | Reading frame tracing with frameshift identification |
+| `attributePtcEvents()` | Frameshift and in-frame stop attribution |
+| `attribute3UtrSplice()` | Same-stop (3'UTR splice) attribution |
+| `traceReferenceAtg()` | Hidden PTC detection via reference reading frame |
+| `genomicToTranscript()` / `transcriptToGenomic()` | Coordinate conversion |
+| `getStrandAwareStop()` | Strand-correct stop codon position |
+| `computeUtrLengths()` | Exonic UTR and CDS lengths |
+| `extractAllEvents()` | Flatten event list-columns for analysis |
+
+This pipeline enables systematic NMD mechanism characterization at scale,
+connecting individual splice events to their downstream consequences for
+translation and mRNA stability.
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```

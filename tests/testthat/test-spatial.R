@@ -241,6 +241,79 @@ test_that("classifyTopology: empty profiles → empty result", {
   expect_equal(nrow(result$classifications), 0L)
 })
 
+test_that("classifyTopology: Partial_IR_5 + Partial_IR_3 classified with expanded types", {
+  # Reuse GENE_S2 structure (4 exons, + strand, exon2 end=2000, exon3 start=2200)
+  # Partial_IR_5 near exon 2 end → F2F with Partial_IR_3 near exon 3 start
+  profiles <- tibble::tibble(
+    gene_id = "GENE_S2",
+    reference_isoform_id = "REF_S2",
+    comparator_isoform_id = "COMP_S2_PIR",
+    n_a5ss = 0L, n_a3ss = 0L, n_se = 0L, n_ir = 0L, n_ir_diff = 0L,
+    n_partial_ir = 2L, n_missing_internal = 0L,
+    n_alt_tss = 0L, n_alt_tes = 0L, n_events = 2L,
+    tss_changed = FALSE, tes_changed = FALSE,
+    detailed_events = list(tibble::tibble(
+      event_type = c("Partial_IR_5", "Partial_IR_3"),
+      direction = c("GAIN", "GAIN"),
+      five_prime = c(1995L, 2205L),
+      three_prime = c(2005L, 2195L),
+      bp_diff = c(10L, 10L)
+    ))
+  )
+  structures <- .make_spatial_structures()
+
+  # Default types (A5SS/A3SS only) should skip this profile
+  result_default <- classifyTopology(profiles, structures, test = FALSE)
+  expect_equal(nrow(result_default$classifications), 0L)
+
+  # Expanded types should classify it as F2F
+  result_expanded <- classifyTopology(profiles, structures,
+    five_prime_types = c("A5SS", "Partial_IR_5"),
+    three_prime_types = c("A3SS", "Partial_IR_3"),
+    test = FALSE)
+  expect_equal(nrow(result_expanded$classifications), 1L)
+  expect_equal(result_expanded$classifications$topology[1], "F2F")
+  expect_equal(result_expanded$classifications$event_a_type[1], "Partial_IR_5")
+  expect_equal(result_expanded$classifications$event_b_type[1], "Partial_IR_3")
+})
+
+test_that("classifyTopology: mixed A5SS + Partial_IR_3 classified correctly", {
+  # A5SS near exon 2 end + Partial_IR_3 near exon 3 start → F2F
+  profiles <- tibble::tibble(
+    gene_id = "GENE_S2",
+    reference_isoform_id = "REF_S2",
+    comparator_isoform_id = "COMP_S2_MIX",
+    n_a5ss = 1L, n_a3ss = 0L, n_se = 0L, n_ir = 0L, n_ir_diff = 0L,
+    n_partial_ir = 1L, n_missing_internal = 0L,
+    n_alt_tss = 0L, n_alt_tes = 0L, n_events = 2L,
+    tss_changed = FALSE, tes_changed = FALSE,
+    detailed_events = list(tibble::tibble(
+      event_type = c("A5SS", "Partial_IR_3"),
+      direction = c("LOSS", "GAIN"),
+      five_prime = c(1995L, 2205L),
+      three_prime = c(2005L, 2195L),
+      bp_diff = c(10L, 10L)
+    ))
+  )
+  structures <- .make_spatial_structures()
+  result <- classifyTopology(profiles, structures,
+    five_prime_types = c("A5SS", "Partial_IR_5"),
+    three_prime_types = c("A3SS", "Partial_IR_3"),
+    test = FALSE)
+  expect_equal(nrow(result$classifications), 1L)
+  expect_equal(result$classifications$topology[1], "F2F")
+  expect_equal(result$classifications$event_a_type[1], "A5SS")
+  expect_equal(result$classifications$event_b_type[1], "Partial_IR_3")
+})
+
+test_that("classifyTopology: actual event types stored in output", {
+  profiles <- .make_spatial_profiles()[2, ]  # A5SS + A3SS → F2F
+  structures <- .make_spatial_structures()
+  result <- classifyTopology(profiles, structures, test = FALSE)
+  expect_equal(result$classifications$event_a_type[1], "A5SS")
+  expect_equal(result$classifications$event_b_type[1], "A3SS")
+})
+
 # ==========================================================================
 # testProximity()
 # ==========================================================================
@@ -331,4 +404,119 @@ test_that(".extractEventsWithPositions: correct gene_start and gene_end", {
   events <- Isopair:::.extractEventsWithPositions(profiles, structures)
   expect_true(all(events$gene_start == 1000L))
   expect_true(all(events$gene_end == 4000L))
+})
+
+# ==========================================================================
+# summarizeBoundaryLengths()
+# ==========================================================================
+
+test_that("summarizeBoundaryLengths: only boundary types extracted", {
+  # Profile with mix of boundary and non-boundary events
+  profiles <- tibble::tibble(
+    gene_id = "G1",
+    reference_isoform_id = "R1",
+    comparator_isoform_id = "C1",
+    detailed_events = list(tibble::tibble(
+      event_type = c("A5SS", "A3SS", "SE", "Partial_IR_5", "Partial_IR_3", "IR"),
+      direction = rep("LOSS", 6),
+      five_prime = c(100L, 200L, 300L, 400L, 500L, 600L),
+      three_prime = c(110L, 230L, 380L, 550L, 700L, 900L),
+      bp_diff = c(10L, 30L, 80L, 150L, 200L, NA_integer_)
+    ))
+  )
+  result <- summarizeBoundaryLengths(profiles)
+  expect_equal(nrow(result$events), 4L)
+  expect_true(all(result$events$event_type %in%
+    c("A5SS", "A3SS", "Partial_IR_5", "Partial_IR_3")))
+})
+
+test_that("summarizeBoundaryLengths: summary_stats correct on known data", {
+  profiles <- tibble::tibble(
+    gene_id = c("G1", "G2"),
+    reference_isoform_id = c("R1", "R2"),
+    comparator_isoform_id = c("C1", "C2"),
+    detailed_events = list(
+      tibble::tibble(
+        event_type = c("A5SS", "A5SS"),
+        direction = c("LOSS", "LOSS"),
+        five_prime = c(100L, 200L),
+        three_prime = c(110L, 230L),
+        bp_diff = c(10L, 30L)
+      ),
+      tibble::tibble(
+        event_type = "A5SS",
+        direction = "LOSS",
+        five_prime = 300L,
+        three_prime = 320L,
+        bp_diff = 20L
+      )
+    )
+  )
+  result <- summarizeBoundaryLengths(profiles)
+  a5ss <- result$summary_stats[result$summary_stats$event_type == "A5SS", ]
+  expect_equal(a5ss$n, 3L)
+  expect_equal(a5ss$median, 20)
+  expect_equal(a5ss$mean, 20)
+  expect_equal(a5ss$min, 10)
+  expect_equal(a5ss$max, 30)
+})
+
+test_that("summarizeBoundaryLengths: combined_stats merges correctly", {
+  profiles <- tibble::tibble(
+    gene_id = "G1",
+    reference_isoform_id = "R1",
+    comparator_isoform_id = "C1",
+    detailed_events = list(tibble::tibble(
+      event_type = c("A5SS", "Partial_IR_5", "A3SS", "Partial_IR_3"),
+      direction = rep("LOSS", 4),
+      five_prime = c(100L, 200L, 300L, 400L),
+      three_prime = c(110L, 350L, 330L, 650L),
+      bp_diff = c(10L, 150L, 30L, 250L)
+    ))
+  )
+  result <- summarizeBoundaryLengths(profiles)
+  expect_true("5_prime" %in% result$combined_stats$event_type)
+  expect_true("3_prime" %in% result$combined_stats$event_type)
+  five_row <- result$combined_stats[result$combined_stats$event_type == "5_prime", ]
+  expect_equal(five_row$n, 2L)  # A5SS + Partial_IR_5
+})
+
+# ==========================================================================
+# classifyTopologyExpanded()
+# ==========================================================================
+
+test_that("classifyTopologyExpanded: returns list with expected names", {
+  profiles <- .make_spatial_profiles()
+  structures <- .make_spatial_structures()
+  result <- classifyTopologyExpanded(profiles, structures,
+                                      test = FALSE)
+  expect_true(is.list(result))
+  expect_true(all(c("per_type_pair", "collapsed", "comparison") %in%
+    names(result)))
+  expect_s3_class(result$comparison, "tbl_df")
+})
+
+test_that("classifyTopologyExpanded: per_type_pair sub-results correct", {
+  # Profile with A5SS + A3SS → F2F (Profile 2)
+  profiles <- .make_spatial_profiles()[2, ]
+  structures <- .make_spatial_structures()
+  result <- classifyTopologyExpanded(profiles, structures, test = FALSE)
+  # Should have A5SS_x_A3SS in per_type_pair
+  expect_true("A5SS_x_A3SS" %in% names(result$per_type_pair))
+  a5a3 <- result$per_type_pair$A5SS_x_A3SS
+  expect_equal(a5a3$classifications$topology[1], "F2F")
+})
+
+test_that("classifyTopologyExpanded: comparison F2F proportions match", {
+  profiles <- .make_spatial_profiles()
+  structures <- .make_spatial_structures()
+  result <- classifyTopologyExpanded(profiles, structures, test = FALSE)
+  # collapsed row should exist
+  collapsed_row <- result$comparison[result$comparison$level == "collapsed", ]
+  expect_equal(nrow(collapsed_row), 1L)
+  # n_classified should be consistent
+  if (!is.null(result$collapsed) && nrow(result$collapsed$summary) > 0L) {
+    expect_equal(collapsed_row$n_classified,
+                 sum(result$collapsed$summary$count))
+  }
 })

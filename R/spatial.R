@@ -101,17 +101,27 @@ testPositionalBias <- function(profiles, structures, min_events = 30L) {
 
 #' Classify Boundary Event Topology
 #'
-#' For profiles containing both A5SS and A3SS events, classifies each
-#' A5SS x A3SS pair into topology categories:
+#' For profiles containing boundary events at both the 5' and 3' splice sites,
+#' classifies each 5'-type x 3'-type pair into topology categories:
 #' \itemize{
 #'   \item \strong{F2F} (Face-to-Face): events flank the same intron
 #'   \item \strong{B2B} (Back-to-Back): events are on the same exon
 #'   \item \strong{Distal}: events are on non-adjacent structural elements
 #' }
 #'
+#' By default, only A5SS and A3SS events are classified. Set
+#' \code{five_prime_types} and \code{three_prime_types} to include additional
+#' boundary event types such as Partial_IR_5 and Partial_IR_3.
+#'
 #' @param profiles A tibble from \code{\link{buildProfiles}()} with
 #'   \code{detailed_events}.
 #' @param structures A tibble from \code{\link{parseIsoformStructures}()}.
+#' @param five_prime_types Character vector of event types affecting the 5'
+#'   splice site (exon donor boundary). Default \code{"A5SS"}. Partial_IR_5
+#'   also affects this boundary.
+#' @param three_prime_types Character vector of event types affecting the 3'
+#'   splice site (exon acceptor boundary). Default \code{"A3SS"}. Partial_IR_3
+#'   also affects this boundary.
 #' @param test Logical; if TRUE (default), run permutation test for F2F
 #'   enrichment.
 #' @param n_perm Integer; number of permutations for the topology test.
@@ -130,10 +140,18 @@ testPositionalBias <- function(profiles, structures, min_events = 30L) {
 #' topo <- classifyTopology(example_profiles, example_structures,
 #'   test = FALSE)
 #' topo$summary
+#'
+#' # Include partial intron retention events
+#' topo2 <- classifyTopology(example_profiles, example_structures,
+#'   five_prime_types = c("A5SS", "Partial_IR_5"),
+#'   three_prime_types = c("A3SS", "Partial_IR_3"),
+#'   test = FALSE)
 #' @export
 #' @importFrom tibble tibble
 #' @importFrom dplyr bind_rows
 classifyTopology <- function(profiles, structures,
+                              five_prime_types = "A5SS",
+                              three_prime_types = "A3SS",
                               test = TRUE, n_perm = 1000L) {
 
   all_classifications <- list()
@@ -143,8 +161,8 @@ classifyTopology <- function(profiles, structures,
     events <- profiles$detailed_events[[i]]
     if (is.null(events) || nrow(events) == 0L) next
 
-    a5ss <- events[events$event_type == "A5SS", , drop = FALSE]
-    a3ss <- events[events$event_type == "A3SS", , drop = FALSE]
+    a5ss <- events[events$event_type %in% five_prime_types, , drop = FALSE]
+    a3ss <- events[events$event_type %in% three_prime_types, , drop = FALSE]
 
     if (nrow(a5ss) == 0L || nrow(a3ss) == 0L) next
 
@@ -173,8 +191,8 @@ classifyTopology <- function(profiles, structures,
             gene_id = gene_id,
             reference_isoform_id = ref_id,
             comparator_isoform_id = profiles$comparator_isoform_id[i],
-            event_a_type = "A5SS",
-            event_b_type = "A3SS",
+            event_a_type = a5ss$event_type[a],
+            event_b_type = a3ss$event_type[b],
             topology = topo
           )
       }
@@ -250,6 +268,191 @@ classifyTopology <- function(profiles, structures,
   }
 
   list(classifications = classifications, summary = summary_tbl)
+}
+
+
+#' Summarize Boundary Event Length Distributions
+#'
+#' Extracts boundary events (A5SS, A3SS, Partial_IR_5, Partial_IR_3) and
+#' computes length distributions (\code{abs(bp_diff)}). Returns per-type and
+#' collapsed 5'/3' summary statistics.
+#'
+#' @param profiles A tibble from \code{\link{buildProfiles}()} with a
+#'   \code{detailed_events} list column.
+#' @return A list with three elements:
+#'   \describe{
+#'     \item{events}{Tibble of all boundary events with \code{event_type} and
+#'       \code{length_bp} (= \code{abs(bp_diff)}).}
+#'     \item{summary_stats}{Tibble per event type: \code{n}, \code{median},
+#'       \code{mean}, \code{q25}, \code{q75}, \code{min}, \code{max}.}
+#'     \item{combined_stats}{Same but with A5SS+Partial_IR_5 merged as
+#'       \code{"5_prime"} and A3SS+Partial_IR_3 merged as \code{"3_prime"}.}
+#'   }
+#' @examples
+#' data(example_profiles)
+#' bl <- summarizeBoundaryLengths(example_profiles)
+#' bl$summary_stats
+#' @export
+#' @importFrom dplyr bind_rows
+#' @importFrom tibble tibble
+summarizeBoundaryLengths <- function(profiles) {
+
+  boundary_types <- c("A5SS", "A3SS", "Partial_IR_5", "Partial_IR_3")
+
+  all_events <- list()
+  for (i in seq_len(nrow(profiles))) {
+    events <- profiles$detailed_events[[i]]
+    if (is.null(events) || nrow(events) == 0L) next
+    boundary <- events[events$event_type %in% boundary_types, , drop = FALSE]
+    if (nrow(boundary) == 0L) next
+    all_events[[length(all_events) + 1L]] <- tibble::tibble(
+      event_type = boundary$event_type,
+      length_bp = abs(boundary$bp_diff)
+    )
+  }
+
+  if (length(all_events) == 0L) {
+    empty_events <- tibble::tibble(event_type = character(0),
+                                    length_bp = numeric(0))
+    empty_stats <- tibble::tibble(
+      event_type = character(0), n = integer(0), median = numeric(0),
+      mean = numeric(0), q25 = numeric(0), q75 = numeric(0),
+      min = numeric(0), max = numeric(0)
+    )
+    return(list(events = empty_events, summary_stats = empty_stats,
+                combined_stats = empty_stats))
+  }
+
+  events_tbl <- dplyr::bind_rows(all_events)
+
+  # Per-type summary
+  .compute_stats <- function(df) {
+    types <- unique(df$event_type)
+    do.call(rbind, lapply(types, function(et) {
+      vals <- df$length_bp[df$event_type == et]
+      qs <- stats::quantile(vals, probs = c(0.25, 0.75), na.rm = TRUE)
+      tibble::tibble(
+        event_type = et, n = length(vals),
+        median = stats::median(vals, na.rm = TRUE),
+        mean = mean(vals, na.rm = TRUE),
+        q25 = as.numeric(qs[1L]), q75 = as.numeric(qs[2L]),
+        min = min(vals, na.rm = TRUE), max = max(vals, na.rm = TRUE)
+      )
+    }))
+  }
+
+  summary_stats <- .compute_stats(events_tbl)
+
+  # Combined: collapse 5' and 3' categories
+  combined <- events_tbl
+  combined$event_type <- ifelse(
+    combined$event_type %in% c("A5SS", "Partial_IR_5"), "5_prime",
+    ifelse(combined$event_type %in% c("A3SS", "Partial_IR_3"), "3_prime",
+           combined$event_type)
+  )
+  combined_stats <- .compute_stats(combined)
+
+  list(events = events_tbl, summary_stats = summary_stats,
+       combined_stats = combined_stats)
+}
+
+
+#' Expanded Multi-Level Topology Classification
+#'
+#' Classifies boundary event topology for each 5'-type x 3'-type pair
+#' combination (e.g., A5SS x A3SS, A5SS x Partial_IR_3, etc.) as well as
+#' a collapsed all-5'-types x all-3'-types analysis. Builds on
+#' \code{\link{classifyTopology}()}.
+#'
+#' @param profiles A tibble from \code{\link{buildProfiles}()} with
+#'   \code{detailed_events}.
+#' @param structures A tibble from \code{\link{parseIsoformStructures}()}.
+#' @param test Logical; if TRUE (default), run permutation tests.
+#' @param n_perm Integer; number of permutations. Default 1000.
+#' @return A list with:
+#'   \describe{
+#'     \item{per_type_pair}{Named list of \code{\link{classifyTopology}()}
+#'       results for each 5' x 3' type pair that has data.}
+#'     \item{collapsed}{\code{\link{classifyTopology}()} result with all 5'
+#'       and 3' types combined.}
+#'     \item{comparison}{Tibble comparing F2F proportion and p-value across
+#'       all levels.}
+#'   }
+#' @examples
+#' data(example_profiles)
+#' data(example_structures)
+#' te <- classifyTopologyExpanded(example_profiles, example_structures,
+#'   test = FALSE)
+#' te$comparison
+#' @export
+#' @importFrom tibble tibble
+#' @importFrom dplyr bind_rows
+classifyTopologyExpanded <- function(profiles, structures,
+                                      test = TRUE, n_perm = 1000L) {
+
+  five_types <- c("A5SS", "Partial_IR_5")
+  three_types <- c("A3SS", "Partial_IR_3")
+
+  # Per-type pair results
+  per_type_pair <- list()
+  for (ft in five_types) {
+    for (tt in three_types) {
+      pair_name <- paste0(ft, "_x_", tt)
+      res <- tryCatch(
+        classifyTopology(profiles, structures,
+                          five_prime_types = ft, three_prime_types = tt,
+                          test = test, n_perm = n_perm),
+        error = function(e) NULL
+      )
+      if (!is.null(res) && nrow(res$classifications) > 0L) {
+        per_type_pair[[pair_name]] <- res
+      }
+    }
+  }
+
+  # Collapsed: all 5' types x all 3' types
+  collapsed <- tryCatch(
+    classifyTopology(profiles, structures,
+                      five_prime_types = five_types,
+                      three_prime_types = three_types,
+                      test = test, n_perm = n_perm),
+    error = function(e) NULL
+  )
+
+  # Build comparison tibble
+  comp_rows <- list()
+
+  .extract_f2f <- function(result, label) {
+    if (is.null(result) || nrow(result$summary) == 0L) {
+      return(tibble::tibble(
+        level = label, n_classified = 0L, F2F_n = 0L, F2F_pct = NA_real_,
+        perm_p = NA_real_
+      ))
+    }
+    n_total <- sum(result$summary$count)
+    f2f_row <- result$summary[result$summary$topology == "F2F", ]
+    f2f_n <- if (nrow(f2f_row) > 0L) f2f_row$count[1L] else 0L
+    f2f_pct <- if (n_total > 0L) 100 * f2f_n / n_total else NA_real_
+    perm_p <- if ("permutation_p_value" %in% names(result$summary) &&
+                  nrow(f2f_row) > 0L) {
+      f2f_row$permutation_p_value[1L]
+    } else {
+      NA_real_
+    }
+    tibble::tibble(level = label, n_classified = as.integer(n_total),
+                    F2F_n = as.integer(f2f_n), F2F_pct = f2f_pct,
+                    perm_p = perm_p)
+  }
+
+  for (nm in names(per_type_pair)) {
+    comp_rows[[length(comp_rows) + 1L]] <- .extract_f2f(per_type_pair[[nm]], nm)
+  }
+  comp_rows[[length(comp_rows) + 1L]] <- .extract_f2f(collapsed, "collapsed")
+
+  comparison <- dplyr::bind_rows(comp_rows)
+
+  list(per_type_pair = per_type_pair, collapsed = collapsed,
+       comparison = comparison)
 }
 
 
@@ -423,10 +626,10 @@ testProximity <- function(profiles, structures, n_perm = 1000L) {
 }
 
 
-#' Classify topology of one A5SS x A3SS event pair
+#' Classify topology of one 5'-boundary x 3'-boundary event pair
 #'
-#' @param a5ss_event One-row data frame for an A5SS event.
-#' @param a3ss_event One-row data frame for an A3SS event.
+#' @param a5ss_event One-row data frame for a 5' boundary event (A5SS or Partial_IR_5).
+#' @param a3ss_event One-row data frame for a 3' boundary event (A3SS or Partial_IR_3).
 #' @param exon_starts Integer vector of reference exon start coordinates.
 #' @param exon_ends Integer vector of reference exon end coordinates.
 #' @param gene_strand Character; "+" or "-".
