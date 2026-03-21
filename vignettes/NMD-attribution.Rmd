@@ -137,6 +137,76 @@ profiles <- buildProfiles(pairs, structures,
 cat("Profiles built:", nrow(profiles), "\n")
 ```
 
+## Visualizing a PTC+ Pair
+
+Before extracting events, let us visualize the gene structure of a PTC+ pair.
+`plotIsoformPair()` draws the reference and comparator exon models with CDS
+coloring and event annotations:
+
+```{r plot-ptc-pair, eval=eval_ggplot, fig.width=12, fig.height=5}
+# Find a pair where the comparator has a PTC
+ptc_comp_ids <- ptc_pos$isoform_id
+ptc_pair_idx <- which(profiles$comparator_isoform_id %in% ptc_comp_ids)
+
+if (length(ptc_pair_idx) > 0) {
+  idx <- ptc_pair_idx[1]
+  ref_id <- profiles$reference_isoform_id[idx]
+  comp_id <- profiles$comparator_isoform_id[idx]
+  pair_gene <- profiles$gene_id[idx]
+  pair_strand <- structures$strand[structures$isoform_id == ref_id]
+
+  # Get exon coordinates
+  ref_str <- structures[structures$isoform_id == ref_id, ]
+  comp_str <- structures[structures$isoform_id == comp_id, ]
+  ref_exons <- data.frame(exon_start = ref_str$exon_starts[[1]],
+                            exon_end = ref_str$exon_ends[[1]])
+  comp_exons <- data.frame(exon_start = comp_str$exon_starts[[1]],
+                             exon_end = comp_str$exon_ends[[1]])
+
+  # Get events for this pair
+  pair_events <- profiles$detailed_events[[idx]]
+
+  # Reconstruct reference
+  recon <- reconstructReference(comp_exons, pair_events)
+
+  # CDS metadata for region coloring
+  cds_for_plot <- cds[cds$isoform_id %in% c(ref_id, comp_id),
+                       c("isoform_id", "cds_start", "cds_stop")]
+
+  fig_pair <- plotIsoformPair(
+    reference_exons = ref_exons,
+    comparator_exons = comp_exons,
+    events = pair_events,
+    gene_id = pair_gene,
+    reference_id = ref_id,
+    comparator_id = comp_id,
+    strand = pair_strand,
+    reconstructed_exons = recon,
+    cds_metadata = cds_for_plot)
+
+  # Add PTC annotation
+  comp_ptc <- ptc[ptc$isoform_id == comp_id, ]
+  comp_stop <- if (pair_strand == "+") {
+    cds$cds_stop[cds$isoform_id == comp_id]
+  } else {
+    cds$cds_start[cds$isoform_id == comp_id]
+  }
+
+  fig_pair <- fig_pair +
+    ggplot2::annotate("point", x = comp_stop, y = 1, color = "red",
+                       size = 4, shape = 4, stroke = 2) +
+    ggplot2::annotate("text", x = comp_stop, y = 0.7, label = "PTC",
+                       color = "red", fontface = "bold", size = 5)
+
+  print(fig_pair)
+}
+```
+
+The red X marks the premature stop codon position on the comparator track.
+Exons are colored by region: blue (5'UTR), green (CDS), orange (3'UTR). The
+event annotations (brackets below the comparator) show the splice differences
+that distinguish the comparator from the reference.
+
 ## Extracting Events
 
 `extractAllEvents()` flattens the `detailed_events` list-column from profiles
@@ -169,13 +239,11 @@ cat("  Compensatory events:",
 
 ```{r frame-walk-detail}
 if (nrow(fw$events) > 0) {
-  evt_display <- fw$events[, c("gene_id", "comparator_isoform_id",
-    "event_type", "direction", "cds_overlap_bp", "signed_cds_change",
-    "cumulative_frame_offset", "is_frameshift")]
+  evt_display <- fw$events
   evt_display$gene_short <- sub("\\.[0-9]+$", "", evt_display$gene_id)
   knitr::kable(evt_display[, c("gene_short", "comparator_isoform_id",
     "event_type", "direction", "cds_overlap_bp", "signed_cds_change",
-    "cumulative_frame_offset", "is_frameshift")],
+    "cumulative_frame_offset", "is_frameshift", "is_compensatory")],
     caption = "Frame walk events: each row is a CDS-overlapping splice event")
 }
 ```
@@ -183,7 +251,9 @@ if (nrow(fw$events) > 0) {
 The `cumulative_frame_offset` column tracks the running reading frame state
 (0 = in-frame, 1 or 2 = shifted). When `is_frameshift` is TRUE, the event
 (or its splice group) has shifted the frame, which typically creates a
-downstream PTC.
+downstream PTC. A **compensatory** event (`is_compensatory = TRUE`) restores
+the reading frame after a previous frameshift --- the two events cancel each
+other out.
 
 # Step 4: PTC Attribution
 
