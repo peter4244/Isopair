@@ -16,7 +16,6 @@
 #' structures <- parseIsoformStructures(gtf_path, verbose = FALSE)
 #' head(structures)
 #' @export
-#' @importFrom rtracklayer import
 #' @importFrom tibble as_tibble tibble
 #' @importFrom dplyr filter select group_by summarise mutate rename n first
 #'   arrange n_distinct bind_rows
@@ -28,11 +27,10 @@ parseIsoformStructures <- function(gtf_path, isoform_ids = NULL,
   }
 
   if (verbose) message("Loading GTF: ", gtf_path)
-  gtf <- rtracklayer::import(gtf_path)
+  gtf_tbl <- .readGtf(gtf_path)
 
   if (verbose) message("Filtering to exon features...")
-  exons <- gtf |>
-    tibble::as_tibble() |>
+  exons <- gtf_tbl |>
     dplyr::filter(.data$type == "exon") |>
     dplyr::select("transcript_id", "gene_id", "seqnames", "start", "end",
                   "strand")

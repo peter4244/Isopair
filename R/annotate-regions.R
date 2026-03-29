@@ -297,15 +297,13 @@ annotateRegionTypes <- function(isoform_union_mapping, cds_metadata) {
 #'   transcript_id, gene_id.
 #' @keywords internal
 #' @importFrom tibble as_tibble
-#' @importFrom rtracklayer import
 .loadGtfData <- function(gtf, verbose = TRUE) {
   if (is.character(gtf)) {
     if (!file.exists(gtf)) {
       stop(sprintf("GTF file not found: %s", gtf))
     }
     if (verbose) message("Loading GTF: ", gtf)
-    gr <- rtracklayer::import(gtf)
-    gtf_tbl <- tibble::as_tibble(gr)
+    gtf_tbl <- .readGtf(gtf)
   } else if (inherits(gtf, "GRanges")) {
     if (verbose) message("Using provided GRanges object")
     gtf_tbl <- tibble::as_tibble(gtf)

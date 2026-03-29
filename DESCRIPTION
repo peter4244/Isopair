@@ -1,7 +1,7 @@
 Package: Isopair
 Type: Package
 Title: Isoform Pair Structural Analysis
-Version: 0.99.2
+Version: 0.99.3
 Authors@R: person("Pete", "Castaldi", role = c("aut", "cre"),
     email = "pcastaldi@bwh.harvard.edu",
     comment = c(ORCID = "0000-0001-7557-338X"))
@@ -25,10 +25,10 @@ Imports:
     dplyr,
     tibble,
     rlang,
-    rtracklayer,
     stats
 Suggests:
     metafor,
+    rtracklayer,
     testthat (>= 3.0.0),
     knitr,
     rmarkdown,
