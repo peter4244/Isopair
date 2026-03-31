@@ -43,6 +43,8 @@ A tibble with one row per uORF and columns:
 \item{is_overlapping}{Logical; stop at/past CDS start}
 \item{frame_relative_to_cds}{Phase (0/1/2) of uORF ATG relative to CDS}
 \item{kozak_score}{Kozak strength (0-2), NA if \code{kozak=FALSE}}
+\item{kozak_pwm_score}{Continuous PWM-based Kozak score (from
+\code{\link{scoreKozakPWM}}), NA if \code{kozak=FALSE}}
 \item{kozak_context}{7-nt context string around ATG}
 \item{uorf_sequence}{Full nucleotide sequence of the uORF}
 \item{stop_codon}{Which stop codon (TAA/TAG/TGA)}

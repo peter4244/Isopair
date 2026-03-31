@@ -216,6 +216,134 @@ test_that(".scoreKozak returns NA at edge of sequence", {
 
 
 # ==============================================================================
+# scoreKozakPWM()
+# ==============================================================================
+
+test_that("scoreKozakPWM returns correct structure", {
+  result <- scoreKozakPWM("GCCGCCACCATGGCGAAA", atg_positions = 10L)
+  expect_s3_class(result, "data.frame")
+  expect_named(result, c("score", "context", "n_scored"))
+  expect_equal(nrow(result), 1)
+})
+
+test_that("scoreKozakPWM scores strong Kozak higher than weak", {
+  # Strong: A at -3, G at +4 — matches optimal Kozak
+  #         GCCGCC A CC ATG G CG AAA
+  #                -6       +1   +5
+  strong <- scoreKozakPWM("GCCGCCACCATGGCGAAA", atg_positions = 10L)
+
+  # Weak: T at -3, T at +4
+  weak <- scoreKozakPWM("GCCGCCTCCATGTCGAAA", atg_positions = 10L)
+
+  expect_true(strong$score > weak$score)
+})
+
+test_that("scoreKozakPWM handles the classic optimal Kozak (GCCACCATGG)", {
+  # Optimal vertebrate consensus: GCC(A/G)CCATGG
+  # Here A at -3, CC at -2/-1, G at +4
+  result <- scoreKozakPWM("GCCGCCACCATGGCG", atg_positions = 10L)
+  expect_true(!is.na(result$score))
+  expect_true(result$score > 0)  # optimal should be positive
+})
+
+test_that("scoreKozakPWM extracts correct 12-nt context", {
+  # Build a sequence where ATG is at position 10
+  # Context should be positions 4-15 (ATG pos 10 - 6 = 4; ATG pos 10 + 4 = 14)
+  seq <- "AAAGCCACCATGGCGAAA"
+  result <- scoreKozakPWM(seq, atg_positions = 10L)
+  # Context = substr(seq, 4, 14) = "GCCACCATGGC"
+  expect_equal(nchar(result$context), 11)
+  # ATG should be in the context at positions 7-9
+  expect_equal(substr(result$context, 7, 9), "ATG")
+})
+
+test_that("scoreKozakPWM returns NA context when at sequence edge", {
+  # ATG at very start — not enough upstream context
+  result <- scoreKozakPWM("ATGGCGAAA", atg_positions = 1L)
+  expect_true(is.na(result$context))
+  # Should still score whatever positions are available
+  expect_true(result$n_scored < 8L)
+})
+
+test_that("scoreKozakPWM handles vectorized input", {
+  seqs <- c("GCCGCCACCATGGCGAAA", "GCCGCCTCCATGTCGAAA")
+  result <- scoreKozakPWM(seqs, atg_positions = c(10L, 10L))
+  expect_equal(nrow(result), 2)
+  expect_true(result$score[1] > result$score[2])  # strong > weak
+})
+
+test_that("scoreKozakPWM recycles length-1 sequence", {
+  seq <- "GCCGCCACCATGGCGAAAATGCCC"
+  result <- scoreKozakPWM(seq, atg_positions = c(10L, 19L))
+  expect_equal(nrow(result), 2)
+})
+
+test_that("scoreKozakPWM accepts custom weight matrix", {
+  # Minimal custom PWM: only score -3 and +4
+  custom <- matrix(0, nrow = 4, ncol = 2,
+                   dimnames = list(c("A", "C", "G", "T"), c("-3", "+4")))
+  custom["A", "-3"] <- 1.0
+  custom["G", "-3"] <- 0.8
+  custom["G", "+4"] <- 1.0
+
+  # A at -3, G at +4
+  result <- scoreKozakPWM("GCCACCATGGCG", atg_positions = 7L,
+                           weights = custom)
+  expect_equal(result$score, 2.0)  # 1.0 (A at -3) + 1.0 (G at +4)
+  expect_equal(result$n_scored, 2L)
+})
+
+test_that("scoreKozakPWM rejects invalid weight matrix", {
+  bad <- matrix(0, nrow = 4, ncol = 2)  # no row names
+  expect_error(scoreKozakPWM("ATGGCG", 1L, weights = bad),
+               "row names")
+})
+
+test_that("scoreKozakPWM handles NA input gracefully", {
+  result <- scoreKozakPWM(c("GCCACCATGGCG", NA), c(7L, NA))
+  expect_equal(nrow(result), 2)
+  expect_true(is.na(result$score[2]))
+})
+
+test_that(".defaultKozakPWM returns valid matrix", {
+  pwm <- Isopair:::.defaultKozakPWM()
+  expect_true(is.matrix(pwm))
+  expect_equal(rownames(pwm), c("A", "C", "G", "T"))
+  expect_equal(ncol(pwm), 8)
+  # Position -3 should strongly favor A and G (positive log-odds)
+  expect_true(pwm["A", "-3"] > 0)
+  expect_true(pwm["G", "-3"] > 0)
+  # Position -3 should disfavor T (negative log-odds)
+  expect_true(pwm["T", "-3"] < 0)
+  # Position +4 should strongly favor G
+  expect_true(pwm["G", "+4"] > 0)
+})
+
+test_that("scoreKozakPWM position offsets are correct", {
+  # Construct a sequence where we know exactly what's at each position
+  # Position: -6 -5 -4 -3 -2 -1 +1 +2 +3 +4 +5
+  # Base:      A  A  A  A  A  A  A  T  G  G  G
+  seq <- "AAAAAAAAAAAATGGGGGG"
+  #        123456789...
+  # ATG at position 7: pos 1=A(-6), 2=A(-5), 3=A(-4), 4=A(-3),
+  #                    5=A(-2), 6=A(-1), 7=A(+1), 8=T(+2), 9=G(+3),
+  #                    10=G(+4), 11=G(+5)
+  # Wait, ATG should be at a position with enough upstream context
+  # Let's place ATG at position 7:
+  seq <- "AAAAAAATGGGGGG"
+  result <- scoreKozakPWM(seq, atg_positions = 7L)
+
+  # Build expected score manually from default PWM
+  pwm <- Isopair:::.defaultKozakPWM()
+  expected <- pwm["A", "-6"] + pwm["A", "-5"] + pwm["A", "-4"] +
+              pwm["A", "-3"] + pwm["A", "-2"] + pwm["A", "-1"] +
+              pwm["G", "+4"] + pwm["G", "+5"]
+  expect_equal(result$score, expected)
+  expect_equal(result$n_scored, 8L)
+})
+
+
+# ==============================================================================
 # scan5UtrFeatures()
 # ==============================================================================
 
@@ -310,6 +438,10 @@ test_that("scan5UtrFeatures computes basic features correctly", {
   expect_equal(result$n_orfs_overlapping, 0L)
   expect_equal(result$longest_orf_nt, 12L)  # pos 4-15
   expect_true(result$atg_validated)
+  # PWM score should be present and numeric
+  expect_true("best_kozak_pwm_score" %in% names(result))
+  expect_true(is.numeric(result$best_kozak_pwm_score))
+  expect_false(is.na(result$best_kozak_pwm_score))
 })
 
 test_that("scan5UtrFeatures handles zero-length 5'UTR", {
@@ -493,6 +625,9 @@ test_that("detectUorfs finds uORFs correctly", {
   expect_equal(result$frame_relative_to_cds, 0L)  # (16-4)%%3=0
   expect_equal(result$stop_codon, "TAA")
   expect_equal(result$uorf_sequence, "ATGAAACCCTAA")
+  # PWM score should be present and numeric
+  expect_true("kozak_pwm_score" %in% names(result))
+  expect_true(is.numeric(result$kozak_pwm_score))
 })
 
 test_that("detectUorfs returns genomic coordinates", {
@@ -598,6 +733,7 @@ test_that("compareUorfs detects shared, gained, and lost uORFs", {
     is_overlapping = FALSE,
     frame_relative_to_cds = 0L,
     kozak_score = NA_integer_,
+    kozak_pwm_score = NA_real_,
     kozak_context = NA_character_,
     uorf_sequence = "ATGAAACCCTAA",
     stop_codon = "TAA"
@@ -634,6 +770,7 @@ test_that("compareUorfs detects stop_changed in shared uORFs", {
     is_overlapping = FALSE,
     frame_relative_to_cds = 0L,
     kozak_score = NA_integer_,
+    kozak_pwm_score = NA_real_,
     kozak_context = NA_character_,
     uorf_sequence = "ATGAAACCCTAA",
     stop_codon = "TAA"
@@ -659,7 +796,8 @@ test_that("compareUorfs handles pairs with no uORFs", {
     atg_genomic_pos = integer(0), stop_genomic_pos = integer(0),
     uorf_length_nt = integer(0), is_overlapping = logical(0),
     frame_relative_to_cds = integer(0),
-    kozak_score = integer(0), kozak_context = character(0),
+    kozak_score = integer(0), kozak_pwm_score = numeric(0),
+    kozak_context = character(0),
     uorf_sequence = character(0), stop_codon = character(0)
   )
 
@@ -683,7 +821,8 @@ test_that("compareUorfs returns empty for empty profiles", {
     atg_genomic_pos = integer(0), stop_genomic_pos = integer(0),
     uorf_length_nt = integer(0), is_overlapping = logical(0),
     frame_relative_to_cds = integer(0),
-    kozak_score = integer(0), kozak_context = character(0),
+    kozak_score = integer(0), kozak_pwm_score = numeric(0),
+    kozak_context = character(0),
     uorf_sequence = character(0), stop_codon = character(0)
   )
   profiles <- tibble::tibble(

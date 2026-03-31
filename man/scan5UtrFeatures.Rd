@@ -51,6 +51,8 @@ A tibble with one row per coding isoform and columns:
 \item{pct_utr5_in_orfs}{Fraction of 5'UTR occupied by ORFs}
 \item{n_strong_kozak_atg}{ATGs with strong Kozak (A/G at -3 AND G at +4)}
 \item{best_kozak_score}{Highest Kozak score among all uATGs (0-2)}
+\item{best_kozak_pwm_score}{Highest PWM-based Kozak score among all uATGs
+(continuous, from \code{\link{scoreKozakPWM}})}
 \item{first_atg_to_cds_nt}{Distance from most 5' ATG to CDS start (nt)}
 \item{max_overlap_nt}{For overlapping uORFs, max extension past CDS start}
 \item{longest_orf_nt}{Length of longest uORF}

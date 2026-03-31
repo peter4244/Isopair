@@ -171,6 +171,183 @@
 }
 
 
+#' Default Kozak Position Weight Matrix
+#'
+#' Returns a log-odds PWM for positions -6 to -1 and +4 to +5 relative to the
+#' ATG start codon. Weights are derived from nucleotide frequencies observed at
+#' verified vertebrate translation initiation sites (Kozak 1987, Cavener & Ray
+#' 1991) versus a uniform (25\%) background. Positive values indicate enrichment
+#' (favorable for initiation); negative values indicate depletion.
+#'
+#' @return A numeric matrix with rows A, C, G, T and columns named by position
+#'   (e.g. "-6", "-5", ..., "+4", "+5").
+#' @references
+#' Kozak M (1987) Nucleic Acids Res 15:8125-8148.
+#' Cavener DR, Ray SC (1991) Nucleic Acids Res 19:3185-3192.
+#' Noderer WL et al. (2014) Mol Syst Biol 10:748.
+#' @keywords internal
+.defaultKozakPWM <- function() {
+  # Observed frequencies at vertebrate TIS sites (Cavener & Ray 1991,
+  # 3012 vertebrate mRNAs, positions -6 to -1 and +4 to +5):
+  #
+  #         -6    -5    -4    -3    -2    -1    +4    +5
+  #   A   0.23  0.25  0.25  0.37  0.27  0.19  0.23  0.17
+  #   C   0.35  0.22  0.32  0.19  0.33  0.39  0.16  0.31
+  #   G   0.23  0.33  0.25  0.34  0.17  0.23  0.46  0.34
+  #   T   0.19  0.20  0.18  0.10  0.23  0.19  0.15  0.18
+  #
+  # Log-odds = log2(observed_freq / 0.25):
+  freqs <- matrix(c(
+    # -6     -5     -4     -3     -2     -1     +4     +5
+    0.23,  0.25,  0.25,  0.37,  0.27,  0.19,  0.23,  0.17,  # A
+    0.35,  0.22,  0.32,  0.19,  0.33,  0.39,  0.16,  0.31,  # C
+    0.23,  0.33,  0.25,  0.34,  0.17,  0.23,  0.46,  0.34,  # G
+    0.19,  0.20,  0.18,  0.10,  0.23,  0.19,  0.15,  0.18   # T
+  ), nrow = 4, byrow = TRUE,
+  dimnames = list(c("A", "C", "G", "T"),
+                  c("-6", "-5", "-4", "-3", "-2", "-1", "+4", "+5")))
+
+  log2(freqs / 0.25)
+}
+
+
+#' Score Kozak Context Using a Position Weight Matrix
+#'
+#' Computes a continuous Kozak initiation strength score for one or more ATG
+#' sites using a log-odds position weight matrix (PWM). The default PWM is
+#' derived from vertebrate translation initiation site frequencies (Cavener &
+#' Ray 1991). Users may supply a custom PWM (e.g., from Noderer et al. 2014
+#' FACS-seq measurements).
+#'
+#' The scored positions are -6 to -1 (upstream of ATG) and +4 to +5 (downstream
+#' of ATG), where ATG occupies positions +1/+2/+3. The score is the sum of
+#' log-odds weights across all scorable positions.
+#'
+#' @param sequences Character vector of transcript sequences (uppercase), or a
+#'   Biostrings \code{DNAStringSet}. Recycled to match the length of
+#'   \code{atg_positions} if length 1.
+#' @param atg_positions Integer vector of 1-based positions of the 'A' of ATG
+#'   in each sequence.
+#' @param weights Numeric matrix (optional). Rows must be named A, C, G, T;
+#'   columns named by position (e.g. "-3", "+4"). If \code{NULL} (default), uses
+#'   the built-in vertebrate TIS PWM from \code{.defaultKozakPWM()}.
+#' @return A data frame with columns:
+#' \describe{
+#'   \item{score}{Numeric; sum of log-odds weights across scored positions.
+#'     Higher values indicate stronger initiation context.}
+#'   \item{context}{Character; the extracted sequence context from position -6
+#'     to +5 (12 nt), or \code{NA} if the window extends beyond the sequence.}
+#'   \item{n_scored}{Integer; number of positions that contributed to the score
+#'     (may be less than the full window at sequence edges).}
+#' }
+#' @examples
+#' # Strong Kozak: A at -3, G at +4
+#' scoreKozakPWM("GCCGCCACCATGGCG", atg_positions = 10L)
+#'
+#' # Score multiple ATGs in one sequence
+#' seq <- "AAAATGCCCGCCACCATGGCGAAA"
+#' scoreKozakPWM(seq, atg_positions = c(4L, 14L))
+#'
+#' # Use a custom weight matrix (must have row names A/C/G/T)
+#' custom_pwm <- matrix(0, nrow = 4, ncol = 2,
+#'                      dimnames = list(c("A","C","G","T"), c("-3", "+4")))
+#' custom_pwm["A", "-3"] <- 1.0
+#' custom_pwm["G", "-3"] <- 0.8
+#' custom_pwm["G", "+4"] <- 1.0
+#' scoreKozakPWM("GCCACCATGGCG", atg_positions = 7L, weights = custom_pwm)
+#'
+#' @references
+#' Kozak M (1987) Nucleic Acids Res 15:8125-8148.
+#' Cavener DR, Ray SC (1991) Nucleic Acids Res 19:3185-3192.
+#' Noderer WL et al. (2014) Mol Syst Biol 10:748.
+#' @export
+scoreKozakPWM <- function(sequences, atg_positions, weights = NULL) {
+  # Handle DNAStringSet input
+  if (inherits(sequences, "DNAStringSet")) {
+    sequences <- as.character(sequences)
+  }
+  sequences <- toupper(sequences)
+
+  # Recycle length-1 sequence to match atg_positions
+  if (length(sequences) == 1L && length(atg_positions) > 1L) {
+    sequences <- rep(sequences, length(atg_positions))
+  }
+  if (length(sequences) != length(atg_positions)) {
+    stop("'sequences' and 'atg_positions' must have the same length ",
+         "(or sequences length 1 for recycling).")
+  }
+
+  # Validate and set up weight matrix
+  if (is.null(weights)) {
+    weights <- .defaultKozakPWM()
+  }
+  if (!is.matrix(weights) || !all(c("A", "C", "G", "T") %in% rownames(weights))) {
+    stop("'weights' must be a numeric matrix with row names A, C, G, T.")
+  }
+
+  # Parse scored positions from column names
+  pos_names <- colnames(weights)
+  if (is.null(pos_names)) {
+    stop("'weights' must have column names indicating positions ",
+         "(e.g. '-6', '-3', '+4').")
+  }
+  pos_offsets <- as.integer(gsub("\\+", "", pos_names))
+  if (any(is.na(pos_offsets))) {
+    stop("Column names of 'weights' must be parseable as integers ",
+         "(e.g. '-6', '-3', '+4').")
+  }
+  # Offsets are relative to ATG position +1: position -3 means atg_pos - 3,
+  # position +4 means atg_pos + 3 (since +1 = A, +2 = T, +3 = G, +4 = next)
+  seq_offsets <- ifelse(pos_offsets < 0, pos_offsets, pos_offsets - 1L)
+
+  n <- length(sequences)
+  scores <- numeric(n)
+  contexts <- character(n)
+  n_scored <- integer(n)
+
+  for (i in seq_len(n)) {
+    seq_i <- sequences[i]
+    atg_i <- atg_positions[i]
+    seq_len_i <- nchar(seq_i)
+
+    if (is.na(atg_i) || is.na(seq_i)) {
+      scores[i] <- NA_real_
+      contexts[i] <- NA_character_
+      n_scored[i] <- NA_integer_
+      next
+    }
+
+    # Full context window: -6 to +5 (12 nt)
+    ctx_start <- atg_i - 6L
+    ctx_end <- atg_i + 4L  # +5 position = atg_pos + 4
+    if (ctx_start >= 1L && ctx_end <= seq_len_i) {
+      contexts[i] <- substr(seq_i, ctx_start, ctx_end)
+    } else {
+      contexts[i] <- NA_character_
+    }
+
+    # Score each position in the weight matrix
+    s <- 0
+    ns <- 0L
+    for (j in seq_along(pos_offsets)) {
+      nt_pos <- atg_i + seq_offsets[j]
+      if (nt_pos < 1L || nt_pos > seq_len_i) next
+      nt <- substr(seq_i, nt_pos, nt_pos)
+      if (nt %in% rownames(weights)) {
+        s <- s + weights[nt, j]
+        ns <- ns + 1L
+      }
+    }
+
+    scores[i] <- if (ns > 0L) s else NA_real_
+    n_scored[i] <- ns
+  }
+
+  data.frame(score = scores, context = contexts, n_scored = n_scored,
+             stringsAsFactors = FALSE)
+}
+
+
 # --- Exported functions -------------------------------------------------------
 
 #' Scan 5'UTR Sequence Features
@@ -211,6 +388,8 @@
 #'   \item{pct_utr5_in_orfs}{Fraction of 5'UTR occupied by ORFs}
 #'   \item{n_strong_kozak_atg}{ATGs with strong Kozak (A/G at -3 AND G at +4)}
 #'   \item{best_kozak_score}{Highest Kozak score among all uATGs (0-2)}
+#'   \item{best_kozak_pwm_score}{Highest PWM-based Kozak score among all uATGs
+#'     (continuous, from \code{\link{scoreKozakPWM}})}
 #'   \item{first_atg_to_cds_nt}{Distance from most 5' ATG to CDS start (nt)}
 #'   \item{max_overlap_nt}{For overlapping uORFs, max extension past CDS start}
 #'   \item{longest_orf_nt}{Length of longest uORF}
@@ -275,6 +454,7 @@ scan5UtrFeatures <- function(structures, cds_metadata, sequences,
     pct_utr5_in_orfs = numeric(n),
     n_strong_kozak_atg = integer(n),
     best_kozak_score = integer(n),
+    best_kozak_pwm_score = numeric(n),
     first_atg_to_cds_nt = integer(n),
     max_overlap_nt = integer(n),
     longest_orf_nt = integer(n),
@@ -316,6 +496,7 @@ scan5UtrFeatures <- function(structures, cds_metadata, sequences,
     # Skip feature computation for zero-length 5'UTR
     if (utr5_len < 3L) {
       res$best_kozak_score[i] <- NA_integer_
+      res$best_kozak_pwm_score[i] <- NA_real_
       res$first_atg_to_cds_nt[i] <- NA_integer_
       res$mean_orf_length[i] <- NA_real_
       next
@@ -376,6 +557,7 @@ scan5UtrFeatures <- function(structures, cds_metadata, sequences,
     max_overlap <- 0L
     n_atg_with_orf <- 0L
     best_kozak <- NA_integer_
+    best_kozak_pwm <- NA_real_
     n_strong <- 0L
     first_atg_dist <- NA_integer_
 
@@ -427,13 +609,21 @@ scan5UtrFeatures <- function(structures, cds_metadata, sequences,
         if (overlap_dist > max_overlap) max_overlap <- overlap_dist
       }
 
-      # Kozak scoring
+      # Kozak scoring (categorical 0-2)
       kz <- .scoreKozak(full_seq, atg_pos)
       if (!is.na(kz$score)) {
         if (is.na(best_kozak) || kz$score > best_kozak) {
           best_kozak <- kz$score
         }
         if (kz$score == 2L) n_strong <- n_strong + 1L
+      }
+
+      # PWM-based Kozak scoring (continuous)
+      kz_pwm <- scoreKozakPWM(full_seq, atg_pos)
+      if (!is.na(kz_pwm$score)) {
+        if (is.na(best_kozak_pwm) || kz_pwm$score > best_kozak_pwm) {
+          best_kozak_pwm <- kz_pwm$score
+        }
       }
     }
 
@@ -448,6 +638,7 @@ scan5UtrFeatures <- function(structures, cds_metadata, sequences,
     res$n_atg_without_orf[i] <- length(atg_positions) - n_atg_with_orf
     res$n_strong_kozak_atg[i] <- n_strong
     res$best_kozak_score[i] <- best_kozak
+    res$best_kozak_pwm_score[i] <- best_kozak_pwm
     res$first_atg_to_cds_nt[i] <- first_atg_dist
 
     # ----- Density features -----
@@ -553,6 +744,8 @@ structuresToGRangesList <- function(structures, isoform_ids = NULL) {
 #'   \item{is_overlapping}{Logical; stop at/past CDS start}
 #'   \item{frame_relative_to_cds}{Phase (0/1/2) of uORF ATG relative to CDS}
 #'   \item{kozak_score}{Kozak strength (0-2), NA if \code{kozak=FALSE}}
+#'   \item{kozak_pwm_score}{Continuous PWM-based Kozak score (from
+#'     \code{\link{scoreKozakPWM}}), NA if \code{kozak=FALSE}}
 #'   \item{kozak_context}{7-nt context string around ATG}
 #'   \item{uorf_sequence}{Full nucleotide sequence of the uORF}
 #'   \item{stop_codon}{Which stop codon (TAA/TAG/TGA)}
@@ -654,11 +847,14 @@ detectUorfs <- function(structures, cds_metadata, sequences,
 
       # Kozak
       kz_score <- NA_integer_
+      kz_pwm_score <- NA_real_
       kz_context <- NA_character_
       if (kozak) {
         kz <- .scoreKozak(full_seq, atg_pos)
         kz_score <- kz$score
         kz_context <- kz$context
+        kz_pwm <- scoreKozakPWM(full_seq, atg_pos)
+        kz_pwm_score <- kz_pwm$score
       }
 
       uorf_seq <- substr(full_seq, atg_pos, stop_end)
@@ -675,6 +871,7 @@ detectUorfs <- function(structures, cds_metadata, sequences,
         is_overlapping = is_overlapping,
         frame_relative_to_cds = frame,
         kozak_score = kz_score,
+        kozak_pwm_score = kz_pwm_score,
         kozak_context = kz_context,
         uorf_sequence = uorf_seq,
         stop_codon = stop_codon_type,
@@ -700,7 +897,8 @@ detectUorfs <- function(structures, cds_metadata, sequences,
       atg_genomic_pos = integer(0), stop_genomic_pos = integer(0),
       uorf_length_nt = integer(0), is_overlapping = logical(0),
       frame_relative_to_cds = integer(0),
-      kozak_score = integer(0), kozak_context = character(0),
+      kozak_score = integer(0), kozak_pwm_score = numeric(0),
+      kozak_context = character(0),
       uorf_sequence = character(0), stop_codon = character(0)
     ))
   }

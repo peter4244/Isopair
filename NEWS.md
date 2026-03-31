@@ -1,3 +1,23 @@
+# Isopair 0.99.4
+
+## New features
+
+* New exported function `scoreKozakPWM()` computes continuous Kozak initiation
+  strength scores using a log-odds position weight matrix (PWM) across 8
+  positions (-6 to -1, +4, +5). Accepts custom weight matrices (e.g., Noderer
+  et al. 2014 FACS-seq values). Vectorized for efficient scoring of many ATGs.
+* `scan5UtrFeatures()` gains a `best_kozak_pwm_score` column — the highest
+  PWM-based Kozak score among all uATGs (continuous, alongside the existing
+  0-2 categorical `best_kozak_score`).
+* `detectUorfs()` gains a `kozak_pwm_score` column per uORF (continuous,
+  alongside the existing 0-2 categorical `kozak_score`).
+
+# Isopair 0.99.3
+
+## Bug fixes
+
+* Fixed version bump for internal changes.
+
 # Isopair 0.99.2
 
 ## Bug fixes

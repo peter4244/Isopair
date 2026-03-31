@@ -1,7 +1,7 @@
 Package: Isopair
 Type: Package
 Title: Isoform Pair Structural Analysis
-Version: 0.99.3
+Version: 0.99.4
 Authors@R: person("Pete", "Castaldi", role = c("aut", "cre"),
     email = "pcastaldi@bwh.harvard.edu",
     comment = c(ORCID = "0000-0001-7557-338X"))
