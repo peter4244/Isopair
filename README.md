@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="man/figures/isopair_logo_600dpi.png" alt="Isopair logo" width="400">
+</p>
+
 # Isopair
 
 **Isoform Pair Structural Analysis**
