@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="man/figures/isopair_logo_600dpi.png" alt="Isopair logo" width="400">
+  <img src="man/figures/isopair_logo_v4_600dpi.png" alt="Isopair logo" width="600">
 </p>
 
 # Isopair
