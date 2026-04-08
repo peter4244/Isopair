@@ -463,9 +463,15 @@ analyzeFrameDisruption <- function(profiles, cds_metadata) {
 #'
 #' @param profiles A tibble from \code{\link{buildProfiles}()} with
 #'   \code{detailed_events}.
-#' @param cds_metadata A tibble from \code{\link{extractCdsAnnotations}()}
-#'   with columns: \code{isoform_id}, \code{coding_status}, \code{cds_start},
-#'   \code{cds_stop}, \code{orf_length}, \code{strand}.
+#' @param cds_metadata A data.frame or tibble with CDS boundary information for
+#'   reference isoforms.
+#'   Required columns: \code{isoform_id}, \code{cds_start}, \code{cds_stop},
+#'   \code{orf_length}, \code{strand}.
+#'   Optional column: \code{coding_status} — if present, only rows with
+#'   \code{"coding"} are used; if absent, all rows are assumed coding.
+#'   This can come from \code{\link{extractCdsAnnotations}()} (GTF-based) or
+#'   be constructed manually from any CDS source (e.g., ORF prediction,
+#'   SQANTI classification).
 #' @param ptc_table Optional tibble with \code{isoform_id} and
 #'   \code{has_ptc} columns (e.g., from \code{\link{computePtcStatus}()}).
 #'   If provided, comparator PTC status is cross-referenced.
@@ -499,10 +505,16 @@ analyzeFrameWalk <- function(profiles, cds_metadata, ptc_table = NULL) {
   frameshift_types <- c("SE", "Missing_Internal", "A5SS", "A3SS",
                          "Partial_IR_5", "Partial_IR_3")
 
-  # CDS lookup
-  cds_lookup <- cds_metadata[cds_metadata$coding_status == "coding",
-                              c("isoform_id", "cds_start", "cds_stop",
-                                "orf_length", "strand")]
+  # CDS lookup — if coding_status column exists, filter to "coding" rows;
+  # otherwise assume all rows are coding
+  if ("coding_status" %in% names(cds_metadata)) {
+    cds_lookup <- cds_metadata[cds_metadata$coding_status == "coding",
+                                c("isoform_id", "cds_start", "cds_stop",
+                                  "orf_length", "strand")]
+  } else {
+    cds_lookup <- cds_metadata[, c("isoform_id", "cds_start", "cds_stop",
+                                    "orf_length", "strand")]
+  }
 
   # PTC lookup
   ptc_lookup <- NULL
