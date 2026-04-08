@@ -435,6 +435,24 @@ test_that("analyzeFrameWalk: non-coding reference → skip", {
   expect_true(is.na(fw$profile_summary$frame_resolved[1]))
 })
 
+test_that("analyzeFrameWalk: works without coding_status column", {
+  # Strip coding_status to simulate manually constructed CDS metadata
+  cds_no_status <- cds_metadata[cds_metadata$coding_status == "coding",
+                                 c("isoform_id", "cds_start", "cds_stop",
+                                   "orf_length", "strand")]
+  profiles <- .make_fd_profiles(cds_structures,
+                                 "TX_H2_ref", "TX_H2_comp",
+                                 "GENE_FW_H2", "+")
+  fw_with <- analyzeFrameWalk(profiles, cds_metadata)
+  fw_without <- analyzeFrameWalk(profiles, cds_no_status)
+  expect_equal(fw_with$profile_summary$n_frameshifts,
+               fw_without$profile_summary$n_frameshifts)
+  expect_equal(fw_with$profile_summary$frame_resolved,
+               fw_without$profile_summary$frame_resolved)
+  expect_equal(fw_with$events$cumulative_frame_offset,
+               fw_without$events$cumulative_frame_offset)
+})
+
 # ==========================================================================
 # Integration: end-to-end with real gene GTF (SRSF3 if available)
 # ==========================================================================
