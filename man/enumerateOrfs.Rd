@@ -12,7 +12,7 @@ enumerateOrfs(
   ejc_threshold = 50L,
   include_no_stop = TRUE,
   kozak_filter = TRUE,
-  kozak_threshold = 0,
+  kozak_threshold = NULL,
   kozak_weights = NULL
 )
 }
@@ -41,8 +41,10 @@ ATG's Kozak context and retain only those at or above
 \code{kozak_threshold} before ORF tracing. When \code{FALSE}, every
 ATG above \code{min_orf_nt} is emitted.}
 
-\item{kozak_threshold}{Numeric; log-odds Kozak score threshold. Default
-\code{0} (above random). Real CDS starts generally score >= 1.}
+\item{kozak_threshold}{Numeric; log-odds Kozak score threshold.
+Default \code{NULL} resolves to
+\code{\link{defaultKozakThreshold}(0.05)} — the MANE-calibrated
+5th-percentile threshold (includes 95\\% of annotated CDS starts).}
 
 \item{kozak_weights}{Optional PWM passed to
 \code{\link{scoreKozakPWM}()}. When \code{NULL} (default), Isopair's

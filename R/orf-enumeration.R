@@ -17,6 +17,49 @@
 # min_orf_nt), e.g. for benchmarking or exhaustive enumeration.
 
 
+#' Load the MANE-calibrated Kozak-score threshold
+#'
+#' Returns a data-driven Kozak log-odds threshold from a one-time
+#' calibration against GENCODE v49 MANE Select annotated CDS starts.
+#' Computed by \code{data-raw/calibrate_mane_kozak.R}; stored in
+#' \code{inst/extdata/kozak_mane_calibration.rds}. Used as the default
+#' \code{kozak_threshold} in \code{\link{enumerateOrfs}()} when the
+#' caller doesn't supply one.
+#'
+#' Under the default quantile 0.05, the threshold is the value below
+#' which only 5\% of MANE annotated CDS starts fall — i.e. any ATG
+#' scoring at or above this threshold has initiation context at least
+#' as strong as 95\% of known annotated starts. Stricter: use 0.10
+#' (90\% inclusion); more lenient: 0.01 (99\% inclusion).
+#'
+#' @param quantile One of 0.01, 0.05, 0.10, 0.25, 0.50. Returns the
+#'   corresponding pre-computed threshold. Default 0.05.
+#' @return Numeric length-1 threshold on the log-odds PWM scale.
+#' @seealso \code{\link{empiricalKozakThreshold}} to compute a custom
+#'   threshold from any training set.
+#' @examples
+#' \dontrun{
+#' defaultKozakThreshold()          # -1.25 for GENCODE v49 MANE (5\%)
+#' defaultKozakThreshold(0.10)      # -0.77
+#' }
+#' @export
+defaultKozakThreshold <- function(quantile = 0.05) {
+  q_map <- c("0.01" = "threshold_q01", "0.05" = "threshold_q05",
+             "0.1"  = "threshold_q10", "0.25" = "threshold_q25",
+             "0.5"  = "threshold_q50")
+  key <- q_map[as.character(quantile)]
+  if (is.na(key))
+    stop("quantile must be one of 0.01, 0.05, 0.10, 0.25, 0.50; ",
+         "for other values use empiricalKozakThreshold() on your own training set.")
+  f <- system.file("extdata", "kozak_mane_calibration.rds", package = "Isopair")
+  if (!nzchar(f))
+    stop("kozak_mane_calibration.rds not found in installed package. ",
+         "Re-run data-raw/calibrate_mane_kozak.R and reinstall Isopair.")
+  calib <- readRDS(f)
+  as.numeric(calib[[key]])
+}
+
+
 #' Derive an empirical Kozak-score threshold from annotated CDS starts
 #'
 #' Scores the Kozak context of every annotated CDS start in the input
@@ -136,8 +179,10 @@ empiricalKozakThreshold <- function(structures, cds_metadata, sequences,
 #'   ATG's Kozak context and retain only those at or above
 #'   \code{kozak_threshold} before ORF tracing. When \code{FALSE}, every
 #'   ATG above \code{min_orf_nt} is emitted.
-#' @param kozak_threshold Numeric; log-odds Kozak score threshold. Default
-#'   \code{0} (above random). Real CDS starts generally score >= 1.
+#' @param kozak_threshold Numeric; log-odds Kozak score threshold.
+#'   Default \code{NULL} resolves to
+#'   \code{\link{defaultKozakThreshold}(0.05)} — the MANE-calibrated
+#'   5th-percentile threshold (includes 95\% of annotated CDS starts).
 #' @param kozak_weights Optional PWM passed to
 #'   \code{\link{scoreKozakPWM}()}. When \code{NULL} (default), Isopair's
 #'   internal default PWM is used.
@@ -163,12 +208,16 @@ enumerateOrfs <- function(structures, cds_metadata, sequences,
                           ejc_threshold   = 50L,
                           include_no_stop = TRUE,
                           kozak_filter    = TRUE,
-                          kozak_threshold = 0,
+                          kozak_threshold = NULL,
                           kozak_weights   = NULL) {
   stop_codons <- c("TAA", "TAG", "TGA")
 
   if (kozak_filter && is.null(kozak_weights))
     kozak_weights <- .defaultKozakPWM()
+  if (kozak_filter && is.null(kozak_threshold)) {
+    kozak_threshold <- tryCatch(defaultKozakThreshold(0.05),
+                                error = function(e) 0)
+  }
 
   # Per-isoform annotated-CDS-start lookup (strand-aware ATG).
   coding <- cds_metadata[cds_metadata$coding_status == "coding", ]
