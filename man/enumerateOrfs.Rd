@@ -2,7 +2,7 @@
 % Please edit documentation in R/orf-enumeration.R
 \name{enumerateOrfs}
 \alias{enumerateOrfs}
-\title{Enumerate and Classify Every Viable ORF in a Set of Transcripts}
+\title{Enumerate and Classify Plausibly-Translated ORFs in a Set of Transcripts}
 \usage{
 enumerateOrfs(
   structures,
@@ -11,75 +11,85 @@ enumerateOrfs(
   min_orf_nt = 30L,
   ejc_threshold = 50L,
   include_no_stop = TRUE,
-  kozak_weights = NULL,
-  kozak_score_min = NULL
+  kozak_filter = TRUE,
+  kozak_threshold = 0,
+  kozak_weights = NULL
 )
 }
 \arguments{
 \item{structures}{A tibble from \code{\link{parseIsoformStructures}()}.}
 
 \item{cds_metadata}{A tibble from \code{\link{extractCdsAnnotations}()},
-used only to flag whether a given ATG coincides with the isoform's own
-annotated CDS start (adds an \code{is_annotated_cds} column).}
+used to flag whether each ATG matches the isoform's annotated CDS
+start (\code{is_annotated_cds}).}
 
-\item{sequences}{A named character vector of transcript sequences (names =
-isoform IDs, values = uppercase DNA in transcript orientation).}
+\item{sequences}{A named character vector of transcript sequences
+(names = isoform IDs; uppercase DNA in transcript orientation).}
 
-\item{min_orf_nt}{Integer; minimum ORF length (nt, ATG-inclusive to stop-
-exclusive) to emit a row. Default 30 (10 aa).}
+\item{min_orf_nt}{Integer; minimum ORF length (nt, ATG-inclusive to
+stop-exclusive) to emit a row. Default 30 (10 aa).}
 
 \item{ejc_threshold}{Integer; minimum nt distance between stop codon 3'
 end and next downstream junction for NMD triggering. Default 50.}
 
-\item{include_no_stop}{Logical; when \code{TRUE}, emit rows for ATGs whose
-reading frame runs off the transcript without hitting a stop, categorized
-as \code{"no_stop_in_frame"}. Default \code{TRUE}.}
+\item{include_no_stop}{Logical; emit rows for ATGs whose reading frame
+runs off the transcript (category \code{no_stop_in_frame}). Default
+\code{TRUE}.}
 
-\item{kozak_weights}{Optional PWM passed to \code{\link{scoreKozakPWM}()}.
-When supplied, adds a \code{kozak_score} column.}
+\item{kozak_filter}{Logical; when \code{TRUE} (default), score every
+ATG's Kozak context and retain only those at or above
+\code{kozak_threshold} before ORF tracing. When \code{FALSE}, every
+ATG above \code{min_orf_nt} is emitted.}
 
-\item{kozak_score_min}{Optional numeric; when supplied with
-\code{kozak_weights}, ATGs with scores below this threshold are filtered
-out.}
+\item{kozak_threshold}{Numeric; log-odds Kozak score threshold. Default
+\code{0} (above random). Real CDS starts generally score >= 1.}
+
+\item{kozak_weights}{Optional PWM passed to
+\code{\link{scoreKozakPWM}()}. When \code{NULL} (default), Isopair's
+internal default PWM is used.}
 }
 \value{
-A tibble with columns:
-\code{isoform_id}, \code{atg_tx_pos} (1-based transcript position),
-\code{stop_tx_pos} (NA when the ORF runs off the transcript),
-\code{orf_length} (nt; NA when no_stop),
-\code{n_downstream_ejc}, \code{is_annotated_cds} (TRUE when this ATG
-matches the isoform's own CDS start from \code{cds_metadata}),
-\code{kozak_score} (when \code{kozak_weights} is supplied),
-\code{category} — one of \code{"effectively_ptc"},
-\code{"no_downstream_ejc"}, \code{"no_stop_in_frame"}.
+A tibble with columns: \code{isoform_id}, \code{atg_tx_pos},
+\code{kozak_score}, \code{stop_tx_pos} (NA when no_stop),
+\code{orf_length} (NA when no_stop), \code{n_downstream_ejc},
+\code{is_annotated_cds}, \code{category} (one of
+\code{effectively_ptc}, \code{no_downstream_ejc},
+\code{no_stop_in_frame}).
 }
 \description{
-For each isoform in \code{structures}, scans the transcript sequence for
-every ATG codon, traces each one to its first in-frame stop, and — for
-ORFs meeting the length threshold — classifies the ORF as NMD-triggering
-(\code{effectively_ptc}), terminating cleanly
+For each isoform in \code{structures}, scores the Kozak context of every
+ATG in the transcript, keeps only ATGs above the threshold, and for those
+traces the reading frame to the first in-frame stop, classifying the ORF
+as NMD-triggering (\code{effectively_ptc}), terminating cleanly
 (\code{no_downstream_ejc}), or running off the transcript without a stop
 (\code{no_stop_in_frame}).
 }
 \details{
-Returns one row per (isoform, viable ORF) — NOT one row per transcript.
-Transcript-level questions ("is this isoform an NMD substrate?") are
-group-by roll-ups over this per-ORF output.
+Kozak filtering is the default because only ATGs with reasonable
+initiation context are plausibly translated; enumerating every ATG
+produces mostly noise. The default PWM comes from Isopair's internal
+\code{.defaultKozakPWM()} (log-odds at positions -6..-1, +4, +5), and
+the default score threshold \code{kozak_threshold = 0} admits ATGs
+above the null (random-sequence) baseline. A strong-canonical Kozak
+typically scores ~+2 or higher; annotated CDS starts are usually >= +1.
+Tighten the threshold to make the per-ORF output more biology-weighted;
+loosen (or set \code{kozak_filter = FALSE}) to recover every ATG-indexed
+ORF above \code{min_orf_nt}.
 
-Optionally scores the Kozak context of each ATG via
-\code{\link{scoreKozakPWM}()} — when \code{kozak_weights} is supplied, a
-\code{kozak_score} column is added; when \code{kozak_score_min} is also
-set, ATGs below that threshold are excluded.
+Returns one row per (isoform, plausibly-translated ORF) — NOT one row
+per transcript. Transcript-level questions ("is this isoform an NMD
+substrate?") are group-by roll-ups over this per-ORF output.
 }
 \examples{
 \dontrun{
-orfs <- enumerateOrfs(structures, cds, sequences)
-# Transcript is NMD substrate if ANY ORF is effectively_ptc
-is_nmd <- orfs |>
-  dplyr::group_by(isoform_id) |>
+orfs <- enumerateOrfs(structures, cds, sequences,
+                      kozak_threshold = 0.5)
+# Transcript is NMD substrate if any plausibly-translated ORF is PTC
+dplyr::group_by(orfs, isoform_id) |>
   dplyr::summarise(any_ptc = any(category == "effectively_ptc"))
 }
 }
 \seealso{
-\code{\link{traceReferenceAtg}}, \code{\link{computePtcStatus}}
+\code{\link{traceReferenceAtg}}, \code{\link{computePtcStatus}},
+\code{\link{scoreKozakPWM}}
 }
