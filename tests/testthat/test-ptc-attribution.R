@@ -513,6 +513,117 @@ test_that("traceReferenceAtg: ref_atg_lost when ATG not exonic", {
   expect_false(result$ref_atg_exonic_in_comp)
 })
 
+test_that("traceReferenceAtg: resolve_alt_start recovers alt-start PTC categories", {
+  # Comparator is missing ref's first exon (ref ATG position not exonic).
+  # Default resolve_alt_start = FALSE -> ref_atg_lost (unchanged behavior).
+  # resolve_alt_start = TRUE -> scan comp for first viable ATG and classify.
+  structures <- tibble::tibble(
+    isoform_id = c("ref1", "comp1"),
+    gene_id = "g1", strand = "+", n_exons = c(2L, 2L),
+    tx_start = c(1L, 201L), tx_end = c(600L, 600L),
+    exon_starts = list(c(1L, 201L), c(201L, 401L)),
+    exon_ends   = list(c(100L, 600L), c(300L, 600L))
+  )
+  cds <- tibble::tibble(
+    isoform_id = c("ref1", "comp1"),
+    coding_status = c("coding", "non-coding"), strand = "+",
+    cds_start = c(50L, NA_integer_), cds_stop = c(350L, NA_integer_),
+    orf_length = c(100L, NA_integer_))
+
+  # Build a comparator sequence that has a downstream junction after
+  # the in-frame stop so the category should be alt_start_effectively_ptc.
+  # Comparator transcript length = (300-201+1) + (600-401+1) = 100 + 200 = 300.
+  # Put an ATG at tx pos 20 and a stop at tx pos 29 (inclusive), so the ORF
+  # is 9 nt (below default min 30 -> should be rejected).
+  # Put a second ATG at tx pos 50 followed by plenty of non-stop codons
+  # and an in-frame TAA at tx pos 98. First-exon length is 100, so the
+  # stop_end = 100 is within the first exon and there's a junction at 101.
+  # Threshold = 50 means junctions > stop_end + 49 count as downstream.
+  # Junction 101 > (100 + 49) = 149? No. So need a later stop.
+  # Simpler: construct a deterministic sequence with controlled positions.
+  len <- 300L
+  s <- rep("A", len)
+  # short alt ATG at pos 10 with immediate stop at 13 -> 3-nt ORF, rejected
+  s[10:12] <- c("A","T","G"); s[13:15] <- c("T","A","A")
+  # viable ATG at pos 50, stop at pos 80 (30 nt ORF, just meets default min)
+  s[50:52] <- c("A","T","G"); s[80:82] <- c("T","A","A")
+  # fill interior codons with serines (TCN) to avoid premature stops
+  fill_pos <- seq(53L, 77L, by = 3L)
+  for (p in fill_pos) s[p:(p + 2L)] <- c("T","C","A")
+  comp_seq <- paste0(s, collapse = "")
+
+  sequences <- c(ref1 = paste0(rep("A", 400L), collapse = ""),
+                 comp1 = comp_seq)
+
+  pairs <- data.frame(
+    reference_isoform_id = "ref1",
+    comparator_isoform_id = "comp1")
+
+  # Default: ref_atg_lost, as before.
+  r_default <- traceReferenceAtg(pairs, structures, cds, sequences)
+  expect_equal(r_default$category, "ref_atg_lost")
+  expect_true(is.na(r_default$alt_start_tx_pos))
+
+  # With resolution: either alt_start_effectively_ptc or
+  # alt_start_no_downstream_ejc depending on EJC geometry. Here the first
+  # exon ends at tx pos 100 (so junction position in tx space is 100), the
+  # stop ends at tx pos 82, and ejc_threshold = 50 -> junction must be
+  # > 82 + 49 = 131 to count as downstream. Junction 100 does NOT count
+  # -> expect alt_start_no_downstream_ejc.
+  r_resolved <- traceReferenceAtg(pairs, structures, cds, sequences,
+                                  resolve_alt_start = TRUE)
+  expect_equal(r_resolved$category, "alt_start_no_downstream_ejc")
+  expect_equal(r_resolved$alt_start_tx_pos, 50L)
+  expect_equal(r_resolved$alt_start_orf_length, 30L)
+
+  # Raising ejc_threshold doesn't matter here since there's no
+  # downstream junction close enough. But if we move the alt-start stop
+  # earlier so the junction IS downstream, we should get the PTC category.
+  # Construct a version where stop is at pos 40 (first-exon junction at
+  # 100 becomes > 40 + 49 = 89 -> downstream).
+  s2 <- s
+  s2[40:42] <- c("T","A","A")
+  # make sure no earlier in-frame stop between ATG(50) and old stop(80)
+  sequences2 <- sequences
+  sequences2["comp1"] <- paste0(s2, collapse = "")
+  # Move viable-ORF ATG earlier so stop at 40 is its in-frame stop.
+  s3 <- rep("A", len)
+  s3[10:12] <- c("A","T","G"); s3[40:42] <- c("T","A","A")
+  fill_pos2 <- seq(13L, 37L, by = 3L)
+  for (p in fill_pos2) s3[p:(p + 2L)] <- c("T","C","A")
+  sequences3 <- c(ref1 = sequences["ref1"], comp1 = paste0(s3, collapse = ""))
+  names(sequences3)[1] <- "ref1"
+  # 30 nt ORF (10..39). Stop_end = 42. Junction at 100 > 42 + 49 = 91 -> yes.
+  r_ptc <- traceReferenceAtg(pairs, structures, cds, sequences3,
+                             resolve_alt_start = TRUE)
+  expect_equal(r_ptc$category, "alt_start_effectively_ptc")
+  expect_equal(r_ptc$alt_start_tx_pos, 10L)
+  expect_equal(r_ptc$alt_start_orf_length, 30L)
+  expect_gt(r_ptc$n_downstream_ejc, 0L)
+})
+
+test_that("traceReferenceAtg: resolve_alt_start returns ref_atg_lost_no_viable_start when no ATG", {
+  structures <- tibble::tibble(
+    isoform_id = c("ref1", "comp1"),
+    gene_id = "g1", strand = "+", n_exons = c(2L, 1L),
+    tx_start = c(1L, 201L), tx_end = c(400L, 400L),
+    exon_starts = list(c(1L, 201L), 201L),
+    exon_ends   = list(c(100L, 400L), 400L))
+  cds <- tibble::tibble(
+    isoform_id = c("ref1", "comp1"),
+    coding_status = c("coding", "non-coding"), strand = "+",
+    cds_start = c(50L, NA_integer_), cds_stop = c(350L, NA_integer_),
+    orf_length = c(100L, NA_integer_))
+  pairs <- data.frame(reference_isoform_id = "ref1",
+                      comparator_isoform_id = "comp1")
+  sequences <- c(ref1 = paste0(rep("A", 400L), collapse = ""),
+                 comp1 = paste0(rep("A", 200L), collapse = ""))
+  r <- traceReferenceAtg(pairs, structures, cds, sequences,
+                         resolve_alt_start = TRUE)
+  expect_equal(r$category, "ref_atg_lost_no_viable_start")
+  expect_true(is.na(r$alt_start_tx_pos))
+})
+
 test_that("traceReferenceAtg: no_ref_cds for non-coding reference", {
   structures <- tibble::tibble(
     isoform_id = c("ref1", "comp1"),

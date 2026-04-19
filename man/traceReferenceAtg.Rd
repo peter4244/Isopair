@@ -9,7 +9,9 @@ traceReferenceAtg(
   structures,
   cds_metadata,
   sequences,
-  ejc_threshold = 50L
+  ejc_threshold = 50L,
+  resolve_alt_start = FALSE,
+  min_alt_orf_nt = 30L
 )
 }
 \arguments{
@@ -25,6 +27,14 @@ isoform IDs, values = uppercase DNA sequences in transcript orientation).}
 
 \item{ejc_threshold}{Integer; minimum distance (nt) between stop codon and
 downstream junction for NMD triggering (default 50).}
+
+\item{resolve_alt_start}{Logical; if TRUE, when the reference ATG is not
+exonic in the comparator (the former \code{ref_atg_lost} terminal case),
+locate the first viable ATG in the comparator and continue the trace
+from that alternative start. Default FALSE preserves legacy behavior.}
+
+\item{min_alt_orf_nt}{Integer; minimum alt-start ORF length (nt) to count
+as viable. Default 30 (10 aa).}
 }
 \value{
 A tibble with one row per pair and columns:
@@ -35,8 +45,13 @@ A tibble with one row per pair and columns:
 \code{comp_orf_length} (nt in comparator from ref ATG),
 \code{comp_stop_tx_pos} (transcript position of stop in comparator),
 \code{n_downstream_ejc} (junctions downstream of stop),
+\code{alt_start_tx_pos} (transcript position of alt ATG when used; NA
+otherwise), \code{alt_start_orf_length} (nt; same condition),
 \code{category} (one of: "effectively_ptc", "truncated_no_ejc",
-"ref_atg_lost", "no_downstream_ejc", "no_ref_cds", "mapping_failed").
+"ref_atg_lost", "no_downstream_ejc", "no_ref_cds", "mapping_failed",
+and when \code{resolve_alt_start = TRUE}:
+"alt_start_effectively_ptc", "alt_start_no_downstream_ejc",
+"ref_atg_lost_no_viable_start").
 }
 \description{
 For each isoform pair, checks whether the reference isoform's CDS start ATG

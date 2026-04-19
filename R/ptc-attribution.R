@@ -284,6 +284,12 @@ attribute3UtrSplice <- function(pairs, profiles, stop_genomic_pos, strand_vec) {
 #'   isoform IDs, values = uppercase DNA sequences in transcript orientation).
 #' @param ejc_threshold Integer; minimum distance (nt) between stop codon and
 #'   downstream junction for NMD triggering (default 50).
+#' @param resolve_alt_start Logical; if TRUE, when the reference ATG is not
+#'   exonic in the comparator (the former \code{ref_atg_lost} terminal case),
+#'   locate the first viable ATG in the comparator and continue the trace
+#'   from that alternative start. Default FALSE preserves legacy behavior.
+#' @param min_alt_orf_nt Integer; minimum alt-start ORF length (nt) to count
+#'   as viable. Default 30 (10 aa).
 #' @return A tibble with one row per pair and columns:
 #'   \code{reference_isoform_id}, \code{comparator_isoform_id},
 #'   \code{ref_atg_genomic} (strand-aware ATG position),
@@ -292,8 +298,13 @@ attribute3UtrSplice <- function(pairs, profiles, stop_genomic_pos, strand_vec) {
 #'   \code{comp_orf_length} (nt in comparator from ref ATG),
 #'   \code{comp_stop_tx_pos} (transcript position of stop in comparator),
 #'   \code{n_downstream_ejc} (junctions downstream of stop),
+#'   \code{alt_start_tx_pos} (transcript position of alt ATG when used; NA
+#'   otherwise), \code{alt_start_orf_length} (nt; same condition),
 #'   \code{category} (one of: "effectively_ptc", "truncated_no_ejc",
-#'   "ref_atg_lost", "no_downstream_ejc", "no_ref_cds", "mapping_failed").
+#'   "ref_atg_lost", "no_downstream_ejc", "no_ref_cds", "mapping_failed",
+#'   and when \code{resolve_alt_start = TRUE}:
+#'   "alt_start_effectively_ptc", "alt_start_no_downstream_ejc",
+#'   "ref_atg_lost_no_viable_start").
 #' @seealso \code{\link{computePtcStatus}}, \code{\link{attributePtcEvents}}
 #' @examples
 #' # See vignette("Isopair") for a complete workflow
@@ -301,7 +312,9 @@ attribute3UtrSplice <- function(pairs, profiles, stop_genomic_pos, strand_vec) {
 #' @importFrom tibble tibble
 #' @importFrom dplyr bind_rows
 traceReferenceAtg <- function(pairs, structures, cds_metadata, sequences,
-                               ejc_threshold = 50L) {
+                               ejc_threshold = 50L,
+                               resolve_alt_start = FALSE,
+                               min_alt_orf_nt = 30L) {
 
   # Build lookups
   structs_lookup <- stats::setNames(
@@ -335,6 +348,7 @@ traceReferenceAtg <- function(pairs, structures, cds_metadata, sequences,
         ref_atg_genomic = NA_real_, ref_atg_exonic_in_comp = NA,
         ref_orf_length = NA_integer_, comp_orf_length = NA_integer_,
         comp_stop_tx_pos = NA_integer_, n_downstream_ejc = NA_integer_,
+        alt_start_tx_pos = NA_integer_, alt_start_orf_length = NA_integer_,
         category = "no_ref_cds")
       next
     }
@@ -342,12 +356,14 @@ traceReferenceAtg <- function(pairs, structures, cds_metadata, sequences,
     # Check if ATG codon is exonic in comparator
     comp_s <- structs_lookup[[comp_id]]
     if (is.null(comp_s)) {
+      # Missing comparator structures — can't resolve alt start.
       results[[i]] <- tibble::tibble(
         reference_isoform_id = ref_id, comparator_isoform_id = comp_id,
         ref_atg_genomic = as.numeric(ref_atg_g),
         ref_atg_exonic_in_comp = FALSE,
         ref_orf_length = NA_integer_, comp_orf_length = NA_integer_,
         comp_stop_tx_pos = NA_integer_, n_downstream_ejc = NA_integer_,
+        alt_start_tx_pos = NA_integer_, alt_start_orf_length = NA_integer_,
         category = "ref_atg_lost")
       next
     }
@@ -355,12 +371,51 @@ traceReferenceAtg <- function(pairs, structures, cds_metadata, sequences,
     atg_exonic <- .isCodonExonic(ref_atg_g, comp_s$starts, comp_s$ends,
                                   strand)
     if (!atg_exonic) {
+      # Reference ATG not in any comparator exon. Classical "ref_atg_lost"
+      # behavior unless resolve_alt_start = TRUE, in which case we scan
+      # the comparator for the first viable ATG and trace from it.
+      if (resolve_alt_start && comp_id %in% names(sequences)) {
+        comp_seq_local <- sequences[comp_id]
+        alt <- .findFirstViableATG(comp_seq_local, stop_codons,
+                                   min_orf_nt = min_alt_orf_nt)
+        if (!is.na(alt$atg_tx)) {
+          junctions <- .getJunctionPositions(comp_s$starts, comp_s$ends, strand)
+          stop_end  <- alt$stop_tx + 2L
+          n_dejc    <- sum(junctions > (stop_end + ejc_threshold - 1L))
+          cat_val <- if (n_dejc > 0L) "alt_start_effectively_ptc"
+                     else "alt_start_no_downstream_ejc"
+          results[[i]] <- tibble::tibble(
+            reference_isoform_id = ref_id, comparator_isoform_id = comp_id,
+            ref_atg_genomic = as.numeric(ref_atg_g),
+            ref_atg_exonic_in_comp = FALSE,
+            ref_orf_length = NA_integer_,
+            comp_orf_length = NA_integer_,
+            comp_stop_tx_pos = NA_integer_,
+            n_downstream_ejc = n_dejc,
+            alt_start_tx_pos = alt$atg_tx,
+            alt_start_orf_length = alt$orf_length,
+            category = cat_val)
+          next
+        }
+        # No viable alt start found
+        results[[i]] <- tibble::tibble(
+          reference_isoform_id = ref_id, comparator_isoform_id = comp_id,
+          ref_atg_genomic = as.numeric(ref_atg_g),
+          ref_atg_exonic_in_comp = FALSE,
+          ref_orf_length = NA_integer_, comp_orf_length = NA_integer_,
+          comp_stop_tx_pos = NA_integer_, n_downstream_ejc = NA_integer_,
+          alt_start_tx_pos = NA_integer_, alt_start_orf_length = NA_integer_,
+          category = "ref_atg_lost_no_viable_start")
+        next
+      }
+      # Default (resolve_alt_start = FALSE): original terminal ref_atg_lost
       results[[i]] <- tibble::tibble(
         reference_isoform_id = ref_id, comparator_isoform_id = comp_id,
         ref_atg_genomic = as.numeric(ref_atg_g),
         ref_atg_exonic_in_comp = FALSE,
         ref_orf_length = NA_integer_, comp_orf_length = NA_integer_,
         comp_stop_tx_pos = NA_integer_, n_downstream_ejc = NA_integer_,
+        alt_start_tx_pos = NA_integer_, alt_start_orf_length = NA_integer_,
         category = "ref_atg_lost")
       next
     }
@@ -375,6 +430,7 @@ traceReferenceAtg <- function(pairs, structures, cds_metadata, sequences,
         ref_atg_exonic_in_comp = TRUE,
         ref_orf_length = NA_integer_, comp_orf_length = NA_integer_,
         comp_stop_tx_pos = NA_integer_, n_downstream_ejc = NA_integer_,
+        alt_start_tx_pos = NA_integer_, alt_start_orf_length = NA_integer_,
         category = "mapping_failed")
       next
     }
@@ -389,7 +445,8 @@ traceReferenceAtg <- function(pairs, structures, cds_metadata, sequences,
         ref_atg_exonic_in_comp = TRUE,
         ref_orf_length = NA_integer_, comp_orf_length = NA_integer_,
         comp_stop_tx_pos = NA_integer_, n_downstream_ejc = NA_integer_,
-        category = "mapping_failed")
+        alt_start_tx_pos = NA_integer_, alt_start_orf_length = NA_integer_,
+        category = "mapping_failed") ## dup above — second mapping_failed path
       next
     }
 
@@ -405,6 +462,7 @@ traceReferenceAtg <- function(pairs, structures, cds_metadata, sequences,
         ref_atg_exonic_in_comp = TRUE,
         ref_orf_length = NA_integer_, comp_orf_length = NA_integer_,
         comp_stop_tx_pos = NA_integer_, n_downstream_ejc = NA_integer_,
+        alt_start_tx_pos = NA_integer_, alt_start_orf_length = NA_integer_,
         category = "mapping_failed")
       next
     }
@@ -448,6 +506,7 @@ traceReferenceAtg <- function(pairs, structures, cds_metadata, sequences,
       ref_atg_exonic_in_comp = TRUE,
       ref_orf_length = ref_orf_len, comp_orf_length = comp_orf_len,
       comp_stop_tx_pos = comp_stop, n_downstream_ejc = n_dejc,
+      alt_start_tx_pos = NA_integer_, alt_start_orf_length = NA_integer_,
       category = cat_val)
   }
 
@@ -480,6 +539,44 @@ traceReferenceAtg <- function(pairs, structures, cds_metadata, sequences,
     pos <- pos + 3L
   }
   NA_integer_
+}
+
+#' Find the first viable ATG in a transcript sequence
+#'
+#' Scans \code{seq_str} for every ATG codon, follows each to the first
+#' in-frame stop, and returns the first ATG whose ORF length (in nt,
+#' ATG inclusive -> first stop exclusive) meets or exceeds
+#' \code{min_orf_nt}. When no such ATG is found, returns a list with
+#' \code{atg_tx = NA}.
+#'
+#' @param seq_str Uppercase DNA sequence in transcript orientation.
+#' @param stop_codons Character vector of stop codons
+#'   (usually \code{c("TAA","TAG","TGA")}).
+#' @param min_orf_nt Integer; minimum ORF length (nt) to treat an ATG
+#'   as viable. Default 30 (10 aa).
+#' @return list(atg_tx, stop_tx, orf_length) with NA values when no ATG
+#'   passes the threshold.
+#' @keywords internal
+.findFirstViableATG <- function(seq_str, stop_codons, min_orf_nt = 30L) {
+  n <- nchar(seq_str)
+  if (n < 3L) return(list(atg_tx = NA_integer_, stop_tx = NA_integer_,
+                          orf_length = NA_integer_))
+  # Find all ATG positions in the transcript (1-based). gregexpr returns
+  # a vector; positions are ordered 5' -> 3'.
+  m <- gregexpr("ATG", seq_str, fixed = TRUE)[[1]]
+  if (length(m) == 1L && m[1] == -1L)
+    return(list(atg_tx = NA_integer_, stop_tx = NA_integer_,
+                orf_length = NA_integer_))
+  for (atg in m) {
+    stop_p <- .findFirstStop(seq_str, as.integer(atg), stop_codons)
+    if (!is.na(stop_p)) {
+      orf_len <- stop_p - as.integer(atg)
+      if (orf_len >= min_orf_nt)
+        return(list(atg_tx = as.integer(atg), stop_tx = as.integer(stop_p),
+                    orf_length = as.integer(orf_len)))
+    }
+  }
+  list(atg_tx = NA_integer_, stop_tx = NA_integer_, orf_length = NA_integer_)
 }
 
 #' Get junction positions in transcript space
