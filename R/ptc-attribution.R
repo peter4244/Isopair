@@ -276,6 +276,17 @@ attribute3UtrSplice <- function(pairs, profiles, stop_genomic_pos, strand_vec) {
 #' own CDS prediction but are effectively PTC-positive when analyzed from the
 #' reference reading frame.
 #'
+#' **Note on per-ORF semantics.** This function evaluates exactly **one ORF
+#' per (reference, comparator) pair** — the ORF defined by the reference
+#' isoform's ATG traced through the comparator's exons (with optional
+#' alt-start fallback via `resolve_alt_start`). The returned `category`
+#' describes the fate of that single ORF, not of the comparator transcript as
+#' a whole. A transcript can host multiple ORFs (main CDS, uORFs, alt-start
+#' internal ORFs) with independent translation and NMD fates; use
+#' \code{\link{enumerateOrfs}()} to enumerate every viable ORF in a set of
+#' transcripts and get per-ORF classifications. Transcript-level "is this
+#' NMD-targeted?" verdicts are group-by rollups over per-ORF results.
+#'
 #' @param pairs A data frame with \code{reference_isoform_id} and
 #'   \code{comparator_isoform_id}.
 #' @param structures A tibble from \code{\link{parseIsoformStructures}()}.

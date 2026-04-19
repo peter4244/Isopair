@@ -61,6 +61,18 @@ stop codon, and counts downstream exon-exon junctions. This identifies
 own CDS prediction but are effectively PTC-positive when analyzed from the
 reference reading frame.
 }
+\details{
+\strong{Note on per-ORF semantics.} This function evaluates exactly \strong{one ORF
+per (reference, comparator) pair} — the ORF defined by the reference
+isoform's ATG traced through the comparator's exons (with optional
+alt-start fallback via \code{resolve_alt_start}). The returned \code{category}
+describes the fate of that single ORF, not of the comparator transcript as
+a whole. A transcript can host multiple ORFs (main CDS, uORFs, alt-start
+internal ORFs) with independent translation and NMD fates; use
+\code{\link{enumerateOrfs}()} to enumerate every viable ORF in a set of
+transcripts and get per-ORF classifications. Transcript-level "is this
+NMD-targeted?" verdicts are group-by rollups over per-ORF results.
+}
 \examples{
 # See vignette("Isopair") for a complete workflow
 }
